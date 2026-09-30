@@ -3,5 +3,5 @@ export const colors = {
    input: '#94A3C8',
    primary: '#1B89BF',
    secondary: '#055074',
-   disabled: '#616161'
+   disabled: '#616161',
 }
