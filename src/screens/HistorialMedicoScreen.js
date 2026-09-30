@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import {
   FlatList,
@@ -7,25 +6,20 @@ import {
   StyleSheet,
   Text,
   View,
-  type ListRenderItem,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../constants/styles';
 
-export type RootStackParamList = {
-  Login: undefined;
-  HistorialMedico: undefined;
+const screenColors = {
+  ...colors,
+  white: colors.white || '#FFFFFF',
+  border: colors.border || '#DCE5EE',
+  softBackground: colors.softBackground || '#EBF3FA',
+  text: colors.text || '#1C2733',
+  muted: colors.muted || colors.disabled || '#687583',
 };
 
-export interface MedicalRecord {
-  id: string;
-  fecha: string;
-  hora: string;
-  especialidad: string;
-  doctor: string;
-  centroSalud: string;
-}
-
-export const MOCK_HISTORIAL: MedicalRecord[] = [
+export const MOCK_HISTORIAL = [
   {
     id: 'historial-001',
     fecha: 'Miércoles, 9 de Setiembre del 2026',
@@ -52,12 +46,10 @@ export const MOCK_HISTORIAL: MedicalRecord[] = [
   },
 ];
 
-type Props = NativeStackScreenProps<RootStackParamList, 'HistorialMedico'>;
+export default function HistorialMedicoScreen({ navigation }) {
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
 
-export default function HistorialMedicoScreen({ navigation }: Props) {
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
-
-  const renderItem: ListRenderItem<MedicalRecord> = ({ item }) => {
+  const renderItem = ({ item }) => {
     const isSelected = selectedRecordId === item.id;
 
     return (
@@ -73,7 +65,7 @@ export default function HistorialMedicoScreen({ navigation }: Props) {
       >
         <View style={styles.recordHeader}>
           <View style={styles.documentIconContainer}>
-            <Ionicons color={colors.primary} name="document-text-outline" size={27} />
+            <Ionicons color={screenColors.primary} name="document-text-outline" size={27} />
           </View>
 
           <View style={styles.dateContainer}>
@@ -83,7 +75,7 @@ export default function HistorialMedicoScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.doctorCard}>
-          <Ionicons color={colors.primary} name="person-circle-outline" size={44} />
+          <Ionicons color={screenColors.primary} name="person-circle-outline" size={44} />
           <View style={styles.doctorDetails}>
             <View style={styles.specialtyBadge}>
               <Text style={styles.specialtyText}>{item.especialidad}</Text>
@@ -108,7 +100,7 @@ export default function HistorialMedicoScreen({ navigation }: Props) {
           onPress={() => navigation.goBack()}
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
         >
-          <Ionicons color={colors.primary} name="chevron-back" size={30} />
+          <Ionicons color={screenColors.primary} name="chevron-back" size={30} />
         </Pressable>
         <Text style={styles.title}>Historial médico</Text>
       </View>
@@ -124,20 +116,10 @@ export default function HistorialMedicoScreen({ navigation }: Props) {
   );
 }
 
-const colors = {
-  background: '#F5F8FC',
-  border: '#DCE5EE',
-  primary: '#1B89BF',
-  specialty: '#055074',
-  softBlue: '#EBF3FA',
-  text: '#1C2733',
-  mutedText: '#687583',
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: screenColors.background,
   },
   header: {
     alignItems: 'center',
@@ -156,7 +138,7 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   title: {
-    color: colors.primary,
+    color: screenColors.primary,
     fontSize: 22,
     fontWeight: '700',
   },
@@ -166,14 +148,14 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   recordCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: colors.border,
+    backgroundColor: screenColors.white,
+    borderColor: screenColors.border,
     borderRadius: 12,
     borderWidth: 1,
     elevation: 2,
     marginBottom: 16,
     padding: 16,
-    shadowColor: '#172B4D',
+    shadowColor: screenColors.text,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 5,
@@ -182,7 +164,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   recordCardSelected: {
-    borderColor: colors.primary,
+    borderColor: screenColors.primary,
   },
   recordHeader: {
     alignItems: 'flex-start',
@@ -191,7 +173,7 @@ const styles = StyleSheet.create({
   },
   documentIconContainer: {
     alignItems: 'center',
-    backgroundColor: '#E8F4FB',
+    backgroundColor: screenColors.softBackground,
     borderRadius: 20,
     height: 40,
     justifyContent: 'center',
@@ -202,20 +184,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dateText: {
-    color: colors.text,
+    color: screenColors.text,
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 21,
   },
   timeText: {
-    color: colors.primary,
+    color: screenColors.primary,
     fontSize: 14,
     fontWeight: '600',
     marginTop: 3,
   },
   doctorCard: {
     alignItems: 'center',
-    backgroundColor: colors.softBlue,
+    backgroundColor: screenColors.softBackground,
     borderRadius: 10,
     flexDirection: 'row',
     padding: 14,
@@ -226,25 +208,25 @@ const styles = StyleSheet.create({
   },
   specialtyBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.specialty,
+    backgroundColor: screenColors.secondary,
     borderRadius: 4,
     marginBottom: 7,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   specialtyText: {
-    color: '#FFFFFF',
+    color: screenColors.white,
     fontSize: 11,
     fontWeight: '700',
   },
   doctorName: {
-    color: colors.text,
+    color: screenColors.text,
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 3,
   },
   healthCenter: {
-    color: colors.mutedText,
+    color: screenColors.muted,
     fontSize: 13,
     lineHeight: 18,
   },
