@@ -4,8 +4,11 @@ import { colors } from '../constants/styles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Octicons } from '@expo/vector-icons';
 import { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 
 export default function LoginScreen() {
+   const navigation = useNavigation();
+   
    const [showPassword, setShowPassword] = useState(false)
 
    return (
@@ -38,7 +41,7 @@ export default function LoginScreen() {
             </Pressable>
          </View>
          <View style={styles.buttonsContainer}>
-            <TouchableOpacity style={styles.button}>
+            <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('HistorialMedico')}>
                <Text style={styles.textButton}>Ingresar</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.button, { backgroundColor: colors.secondary }]}>

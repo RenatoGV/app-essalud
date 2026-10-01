@@ -1,23 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../constants/styles';
-
-const screenColors = {
-  ...colors,
-  white: colors.white || '#FFFFFF',
-  border: colors.border || '#DCE5EE',
-  softBackground: colors.softBackground || '#EBF3FA',
-  text: colors.text || '#1C2733',
-  muted: colors.muted || colors.disabled || '#687583',
-};
 
 export const MOCK_HISTORIAL = [
   {
@@ -46,26 +30,13 @@ export const MOCK_HISTORIAL = [
   },
 ];
 
-export default function HistorialMedicoScreen({ navigation }) {
-  const [selectedRecordId, setSelectedRecordId] = useState(null);
-
+export default function HistorialMedicoScreen() {
   const renderItem = ({ item }) => {
-    const isSelected = selectedRecordId === item.id;
-
     return (
-      <Pressable
-        accessibilityLabel={`Historial de ${item.especialidad} con ${item.doctor}`}
-        accessibilityRole="button"
-        onPress={() => setSelectedRecordId(item.id)}
-        style={({ pressed }) => [
-          styles.recordCard,
-          isSelected && styles.recordCardSelected,
-          pressed && styles.recordCardPressed,
-        ]}
-      >
+      <View style={styles.recordCard}>
         <View style={styles.recordHeader}>
           <View style={styles.documentIconContainer}>
-            <Ionicons color={screenColors.primary} name="document-text-outline" size={27} />
+            <Ionicons color={colors.primary} name="document-text-outline" size={27} />
           </View>
 
           <View style={styles.dateContainer}>
@@ -75,7 +46,7 @@ export default function HistorialMedicoScreen({ navigation }) {
         </View>
 
         <View style={styles.doctorCard}>
-          <Ionicons color={screenColors.primary} name="person-circle-outline" size={44} />
+          <Ionicons color={colors.primary} name="person-circle-outline" size={44} />
           <View style={styles.doctorDetails}>
             <View style={styles.specialtyBadge}>
               <Text style={styles.specialtyText}>{item.especialidad}</Text>
@@ -86,25 +57,12 @@ export default function HistorialMedicoScreen({ navigation }) {
             </Text>
           </View>
         </View>
-      </Pressable>
+      </View>
     );
   };
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="Volver"
-          accessibilityRole="button"
-          hitSlop={10}
-          onPress={() => navigation.goBack()}
-          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-        >
-          <Ionicons color={screenColors.primary} name="chevron-back" size={30} />
-        </Pressable>
-        <Text style={styles.title}>Historial médico</Text>
-      </View>
-
       <FlatList
         contentContainerStyle={styles.listContent}
         data={MOCK_HISTORIAL}
@@ -119,52 +77,19 @@ export default function HistorialMedicoScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: screenColors.background,
-  },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    minHeight: 68,
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    alignItems: 'center',
-    height: 40,
-    justifyContent: 'center',
-    marginRight: 8,
-    width: 40,
-  },
-  backButtonPressed: {
-    opacity: 0.65,
-  },
-  title: {
-    color: screenColors.primary,
-    fontSize: 22,
-    fontWeight: '700',
+    backgroundColor: 'white',
   },
   listContent: {
     paddingBottom: 28,
     paddingHorizontal: 20,
-    paddingTop: 8,
   },
   recordCard: {
-    backgroundColor: screenColors.white,
-    borderColor: screenColors.border,
+    backgroundColor: 'white',
+    borderColor: colors.input,
     borderRadius: 12,
-    borderWidth: 1,
-    elevation: 2,
+    borderWidth: 2,
     marginBottom: 16,
     padding: 16,
-    shadowColor: screenColors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 5,
-  },
-  recordCardPressed: {
-    opacity: 0.9,
-  },
-  recordCardSelected: {
-    borderColor: screenColors.primary,
   },
   recordHeader: {
     alignItems: 'flex-start',
@@ -173,7 +98,7 @@ const styles = StyleSheet.create({
   },
   documentIconContainer: {
     alignItems: 'center',
-    backgroundColor: screenColors.softBackground,
+    backgroundColor: colors.softBackground,
     borderRadius: 20,
     height: 40,
     justifyContent: 'center',
@@ -184,23 +109,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dateText: {
-    color: screenColors.text,
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 21,
   },
   timeText: {
-    color: screenColors.primary,
-    fontSize: 14,
+    color: colors.primary,
+    fontSize: 20,
     fontWeight: '600',
     marginTop: 3,
   },
   doctorCard: {
-    alignItems: 'center',
-    backgroundColor: screenColors.softBackground,
+    alignItems: 'flex-start',
+    backgroundColor: colors.softBackground,
     borderRadius: 10,
     flexDirection: 'row',
     padding: 14,
+    borderColor: colors.primary,
+    borderWidth: 1
   },
   doctorDetails: {
     flex: 1,
@@ -208,25 +134,24 @@ const styles = StyleSheet.create({
   },
   specialtyBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: screenColors.secondary,
+    backgroundColor: colors.secondary,
     borderRadius: 4,
     marginBottom: 7,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   specialtyText: {
-    color: screenColors.white,
+    color: 'white',
     fontSize: 11,
     fontWeight: '700',
   },
   doctorName: {
-    color: screenColors.text,
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 3,
   },
   healthCenter: {
-    color: screenColors.muted,
+    color: colors.input,
     fontSize: 13,
     lineHeight: 18,
   },
