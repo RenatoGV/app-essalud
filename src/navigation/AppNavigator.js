@@ -6,6 +6,7 @@ import HistorialMedicoScreen from "../screens/HistorialMedicoScreen";
 import { colors } from "../constants/styles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "react-native";
+import HomeScreen from "../screens/HomeScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -53,6 +54,13 @@ export default function AppNavigator() {
                component = {HistorialMedicoScreen}
                options={{
                   title: 'Historial Médico'
+               }}
+            />
+            <Stack.Screen
+               name = "Home"
+               component = {HomeScreen}
+               options={{
+                  headerShown: false
                }}
             />
          </Stack.Navigator>
