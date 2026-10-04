@@ -1,25 +1,63 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Pressable } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { colors } from '../constants/styles';
+import { Host, DatePickerDialog } from '@expo/ui/jetpack-compose';
+import { formatDate } from '../helpers/Formatter';
 
-const CAMPOS = [
-  { label: 'Seleccione la especialidad', val: 'Cardiología', icon: 'chevron-down' },
-  { label: 'Seleccione centro de salud', val: 'Hospital Nacional Edgardo Rebagliati ...', icon: 'chevron-down' },
-  { label: 'Seleccione fecha', val: '04 de Setiembre del 2026', icon: 'calendar-outline', size: 20 },
-];
-
-const HORAS = [
+const HORARIO_MANANA = [
   { hora: '08:30', periodo: 'a.m.' },
-  { hora: '09:15', periodo: 'ocupado', ocupado: true },
+  { hora: '09:15', periodo: 'a.m.', ocupado: true },
   { hora: '10:00', periodo: 'a.m.' },
   { hora: '11:15', periodo: 'a.m.' },
   { hora: '11:45', periodo: 'a.m.' },
   { hora: '12:00', periodo: 'p.m.' },
 ];
 
+const HORARIO_TARDE = [
+  { hora: '02:00', periodo: 'p.m.' },
+  { hora: '03:15', periodo: 'p.m.', ocupado: true },
+  { hora: '04:00', periodo: 'p.m.' },
+  { hora: '04:45', periodo: 'p.m.', ocupado: true  },
+  { hora: '05:00', periodo: 'p.m.' },
+  { hora: '05:45', periodo: 'p.m.', ocupado: true  }
+]
+
+const CENTROS_DE_SALUD = [
+  'Hospital Nacional Edgardo Rebagliati',
+  'Otro'
+]
+
+const ESPECIALIDADES = [
+  'Cardiología',
+  'Dermatología',
+  'Medicina general',
+  'Pediatría',
+  'Traumatología',
+]
+
 export default function ReservarCitaScreen() {
-  const [turno, setTurno] = useState('manana');
+  const [showCentros, setShowCentros] = useState(false)
+  const [centro, setCentro] = useState(CENTROS_DE_SALUD.at(0))
+
+  const [showEspecialidades, setShowEspecialidades] = useState(false)
+  const [especialidad, setEspecialidad] = useState(ESPECIALIDADES.at(0))
+
+  const [showPicker, setShowPicker] = useState(false)
+  const [date, setDate] = useState(new Date())
+
+  const [horario, setHorario] = useState(HORARIO_MANANA)
+  const [turno, setTurno] = useState('manana')
+
+  const [horaSeleccionada, setHoraSeleccionada] = useState(null)
+
+  useEffect(() => {
+    if(turno === 'manana') setHorario(HORARIO_MANANA)
+    else setHorario(HORARIO_TARDE)
+
+    setHoraSeleccionada(null)
+  }, [turno])
+  
 
   return (
     <View style={styles.container}>
@@ -29,15 +67,79 @@ export default function ReservarCitaScreen() {
           Reservación de nueva cita{'\n'}médica
         </Text>
 
-        {CAMPOS.map((campo) => (
-          <View key={campo.label}>
-            <Text style={styles.label}>{campo.label}</Text>
-            <View style={styles.selector}>
-              <Text style={styles.selectorText} numberOfLines={1}>{campo.val}</Text>
-              <Ionicons name={campo.icon} size={campo.size || 18} color="#94A3B8" />
+        <View style={[styles.dropdownContainer, {zIndex: 2}]}>
+          <Text style={styles.label}>Seleccione la especialidad</Text>
+          <Pressable style={styles.selector} onPress={() => setShowEspecialidades(!showEspecialidades)}>
+            <Text style={styles.selectorText} numberOfLines={1}>{especialidad}</Text>
+            <Ionicons name={showEspecialidades ? 'chevron-up' : 'chevron-down'} size={18} color={colors.input} />
+          </Pressable>
+          {showEspecialidades && (
+            <View style={styles.dropdown}>
+              {ESPECIALIDADES.map((item) => (
+                <Pressable
+                  key={item}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                      setEspecialidad(item);
+                      setShowEspecialidades(false);
+                  }}
+                >
+                  <Text style={styles.dropdownText}>
+                      {item}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
-          </View>
-        ))}
+          )}
+        </View>
+
+        <View style={[styles.dropdownContainer, {zIndex: 1}]}>
+          <Text style={styles.label}>Seleccione el centro de salud</Text>
+          <Pressable style={styles.selector} onPress={() => setShowCentros(!showCentros)}>
+            <Text style={styles.selectorText} numberOfLines={1}>{centro}</Text>
+            <Ionicons name={showCentros ? 'chevron-up' : 'chevron-down'} size={18} color={colors.input} />
+          </Pressable>
+          {showCentros && (
+            <View style={styles.dropdown}>
+              {CENTROS_DE_SALUD.map((item) => (
+                <Pressable
+                  key={item}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                      setCentro(item);
+                      setShowCentros(false);
+                  }}
+                >
+                  <Text style={styles.dropdownText}>
+                      {item}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View>
+          <Text style={styles.label}>Seleccione fecha</Text>
+          <Pressable style={styles.selector} onPress={() => setShowPicker(true)}>
+            <Text style={styles.selectorText} numberOfLines={1}>{formatDate(date)}</Text>
+            <Ionicons name='calendar-outline' size={20} color={colors.input} />
+          </Pressable>
+          {showPicker && (
+            <Host>
+              <DatePickerDialog
+                initialDate={date.toISOString()}
+                onDateSelected={(selectedDate) => {
+                    setDate(selectedDate);
+                    setShowPicker(false);
+                }}
+                onDismissRequest={() => setShowPicker(false)}
+                color={colors.primary}
+                selectableDates={{start: new Date()}}
+              />
+            </Host>
+          )}
+        </View>
 
         <Text style={styles.label}>Seleccione horario disponible</Text>
         <View style={styles.turnoContainer}>
@@ -49,7 +151,7 @@ export default function ReservarCitaScreen() {
             <Feather
               name="sun"
               size={18}
-              color={turno === 'manana' ? '#8FA0B5' : '#3C4D6B'}
+              color={turno === 'manana' ? colors.input : colors.disabled}
               style={styles.turnoIcon}
             />
             <View>
@@ -70,7 +172,7 @@ export default function ReservarCitaScreen() {
             <Ionicons
               name="moon"
               size={16}
-              color={turno === 'tarde' ? '#8FA0B5' : '#3C4D6B'}
+              color={turno === 'tarde' ? colors.input : colors.disabled}
               style={styles.turnoIcon}
             />
             <View>
@@ -85,19 +187,21 @@ export default function ReservarCitaScreen() {
         </View>
 
         <View style={styles.horasGrid}>
-          {HORAS.map((item) => (
-            <View
-              key={item.hora}
-              style={[styles.horaCard, item.ocupado && styles.horaOcupado]}
-            >
-              <Text style={[styles.horaText, item.ocupado && styles.textMuted]}>
-                {item.hora}
-              </Text>
-              <Text style={[styles.periodoText, item.ocupado && styles.textMuted]}>
-                {item.periodo}
-              </Text>
-            </View>
-          ))}
+          {horario.map((item) => {
+            const seleccionada = horaSeleccionada === item.hora;
+
+            return (
+              <Pressable key={item.hora} disabled={item.ocupado} style={[styles.horaCard, item.ocupado && styles.horaOcupado, seleccionada && styles.horaSeleccionada ]} onPress={() => setHoraSeleccionada(item.hora)}>
+                <Text style={[styles.horaText, item.ocupado && styles.textMuted, seleccionada && styles.horaTextSeleccionada]}>
+                  {item.hora}
+                </Text>
+
+                <Text style={[styles.periodoText, item.ocupado && styles.textMuted, seleccionada && styles.horaTextSeleccionada]}>
+                  {item.periodo}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <View style={styles.infoBox}>
@@ -123,7 +227,7 @@ export default function ReservarCitaScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'white',
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -133,14 +237,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 21,
     fontWeight: '800',
-    color: '#111827',
     lineHeight: 28,
     marginBottom: 16,
   },
   label: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#1E293B',
     marginBottom: 8,
     marginTop: 12,
   },
@@ -152,14 +254,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 9,
     borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#ffffff',
+    borderColor: colors.input,
   },
   selectorText: {
     flex: 1,
     fontSize: 14,
-    color: '#1E293B',
     marginRight: 8,
+  },
+  dropdownContainer: {
+    position: 'relative',
+    zIndex: 10,
+  },
+  dropdown: {
+    position: 'absolute',
+    top: 76,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: colors.input,
+    borderRadius: 9,
+    elevation: 5,
+    zIndex: 20,
+  },
+  dropdownItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownText: {
+    fontSize: 14,
   },
   turnoContainer: {
     flexDirection: 'row',
@@ -178,12 +301,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   turnoTabActive: {
-    backgroundColor: '#ffffff',
+    backgroundColor: 'white',
     elevation: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
   },
   turnoIcon: {
     marginRight: 7,
@@ -198,10 +317,10 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   textActive: {
-    color: '#6B7F9E',
+    color: colors.input,
   },
   textInactive: {
-    color: '#384860',
+    color: colors.disabled,
   },
   horasGrid: {
     flexDirection: 'row',
@@ -214,8 +333,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#ffffff',
+    borderColor: colors.input,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -224,14 +342,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     borderColor: '#E2E8F0',
   },
+  horaSeleccionada: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
   horaText: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#6B7F9E',
+    color: colors.input,
+  },
+  horaTextSeleccionada: {
+    color: 'white',
   },
   periodoText: {
     fontSize: 10.5,
-    color: '#8FA0B5',
+    color: colors.input,
     marginTop: 1,
   },
   textMuted: {
@@ -241,10 +366,10 @@ const styles = StyleSheet.create({
   infoBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#DEF1FB',
+    backgroundColor: colors.softBackground,
     borderRadius: 9,
     borderWidth: 1.5,
-    borderColor: '#70B9DE',
+    borderColor: colors.primary,
     padding: 12,
     marginTop: 6,
     marginBottom: 18,
@@ -256,12 +381,11 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#0F172A',
     marginBottom: 3,
   },
   infoText: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.input,
     lineHeight: 15,
   },
   submitButton: {
@@ -270,15 +394,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
   },
   submitButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#ffffff',
+    color: 'white',
   },
 });
