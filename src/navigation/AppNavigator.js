@@ -7,6 +7,7 @@ import { colors } from "../constants/styles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "react-native";
 import HomeScreen from "../screens/HomeScreen";
+import ReservarCitaScreen from '../screens/ReservarCitaScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -61,6 +62,13 @@ export default function AppNavigator() {
                component = {HomeScreen}
                options={{
                   headerShown: false
+               }}
+            />
+            <Stack.Screen
+               name = "ReservarCita"
+               component = {ReservarCitaScreen}
+               options={{
+                  title: 'Reservar cita'
                }}
             />
          </Stack.Navigator>

@@ -29,7 +29,7 @@ export default function HomeScreen() {
          icon: (props) => (
             <MaterialIcons {...props} name="calendar-today" />
          ),
-         onPress: () => console.log('pressed')
+         onPress: () => navigation.navigate('ReservarCita')
       },
       {
          title: 'Mis Citas',
