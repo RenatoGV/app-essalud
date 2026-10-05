@@ -1,94 +1,54 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CitaCard from '../components/CitaCard';
 import { colors } from '../constants/styles';
-import { crearCitasMock } from '../data/citasMock';
 
-const formatoDiaPeru = new Intl.DateTimeFormat('es-PE', {
-  timeZone: 'America/Lima',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-const formatoFecha = new Intl.DateTimeFormat('es-PE', {
-  timeZone: 'UTC',
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-});
-
-/* Fecha */
-export function obtenerFechaEnPeru(ahora = new Date()) {
-  const partes = Object.fromEntries(
-    formatoDiaPeru.formatToParts(ahora).map(({ type, value }) => [type, value]),
-  );
-
-  return `${partes.year}-${partes.month}-${partes.day}`;
-}
-
-/* Citas */
-export function prepararCitas(citas) {
-  return [...citas]
-    .sort((a, b) => `${a.fecha}T${a.hora}`.localeCompare(`${b.fecha}T${b.hora}`))
-    .map((cita) => {
-      const [anio, mes, dia] = cita.fecha.split('-').map(Number);
-      const [hora, minutos] = cita.hora.split(':');
-      const fecha = formatoFecha.format(new Date(Date.UTC(anio, mes - 1, dia)));
-
-      return {
-        ...cita,
-        fechaTexto: fecha.charAt(0).toUpperCase() + fecha.slice(1),
-        horaTexto: `${Number(hora) % 12 || 12}:${minutos} ${Number(hora) < 12 ? 'a.m.' : 'p.m.'}`,
-      };
-    });
-}
-
-/* Compara días calendario; una cita pasada no implica que haya sido atendida.*/
-export function contarCitasManana(citas, fechaHoy) {
-  const [anio, mes, dia] = fechaHoy.split('-').map(Number);
-  const manana = new Date(Date.UTC(anio, mes - 1, dia + 1)).toISOString().slice(0, 10);
-
-  return citas.filter((cita) => cita.fecha === manana).length;
-}
+const citas = [
+  {
+    id: 'cita-001',
+    diasDesdeHoy: 1,
+    fecha: new Date('2026-10-4'),
+    hora: '10:30 a.m.',
+    doctor: 'Dr. Carlos Mendoza',
+    especialidad: 'Cardiología',
+    centroSalud: 'Hospital Nacional Edgardo Rebagliati Martins',
+  },
+  {
+    id: 'cita-002',
+    diasDesdeHoy: 3,
+    fecha: new Date('2026-10-7'),
+    hora: '08:00 a.m.',
+    doctor: 'Dra. Patricia Salazar',
+    especialidad: 'Medicina interna',
+    centroSalud: 'Policlínico Pablo Bermúdez',
+  },
+  {
+    id: 'cita-003',
+    diasDesdeHoy: 7,
+    fecha: new Date('2026-10-3'),
+    hora: '15:15 p.m.',
+    doctor: 'Dr. Javier Rojas',
+    especialidad: 'Traumatología',
+    centroSalud: 'Hospital Guillermo Almenara Irigoyen',
+  },
+]
 
 function SeparadorCitas() {
   return <View style={styles.separator} />;
 }
 
 export default function MisCitas() {
-  const [fechaHoy, setFechaHoy] = useState(obtenerFechaEnPeru);
+  const navigation = useNavigation()
 
-  useFocusEffect(useCallback(() => {
-    // Actualiza el recordatorio al volver a la pantalla y si cambia el día
-    const actualizarFecha = () => setFechaHoy(obtenerFechaEnPeru());
-    actualizarFecha();
-    const intervalo = setInterval(actualizarFecha, 60_000);
-    return () => clearInterval(intervalo);
-  }, []));
+  const [citasManana, setCitasManana] = useState(3)
 
-  // Punto de sustitución de los datos de ejemplo cuando se conecte el servidor
-  const citas = prepararCitas(crearCitasMock(fechaHoy));
-  const citasManana = contarCitasManana(citas, fechaHoy);
-
-  /**id */
   const handleVerDetalles = (id) => {
-    const cita = citas.find((item) => item.id === id);
-    if (!cita) return;
-
-  // Muestra un mensaje de demostración. Se cambiará la pantalla cuando se implemente la pantalla de detalles de cita.
-    Alert.alert(
-      'Ver detalles · Demostración',
-      `${cita.especialidad}\n${cita.doctor}\n${cita.fechaTexto} · ${cita.horaTexto}\n${cita.centroSalud}\n\nLa pantalla de detalles estará disponible en un próximo avance.`,
-      [{ text: 'Entendido' }],
-    );
+    navigation.navigate('DetalleCita')
   };
 
-// Muestra un mensaje de demostración. Se cambiará la pantalla cuando se implemente la pantalla de gestión de cita.
   const handleGestionarCita = (id) => {
     const cita = citas.find((item) => item.id === id);
     if (!cita) return;
@@ -101,7 +61,6 @@ export default function MisCitas() {
   };
 
   return (
-    // El navegador protege el borde superior con su encabezado.
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.container}>
       <FlatList
         contentContainerStyle={styles.listContent}
