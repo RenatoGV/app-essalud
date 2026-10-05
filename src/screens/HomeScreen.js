@@ -29,7 +29,7 @@ export default function HomeScreen() {
          icon: (props) => (
             <MaterialIcons {...props} name="calendar-today" />
          ),
-         onPress: () => console.log('pressed')
+         onPress: () => navigation.navigate('ReservarCita')
       },
       {
          title: 'Mis Citas',
@@ -114,7 +114,7 @@ export default function HomeScreen() {
                      <Text style={{fontSize: 13, color: colors.input}}>{nextDate.details}</Text>
                   </View>
                </View>
-               <TouchableOpacity style={styles.button}>
+               <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('DetalleCita')}>
                   <Text style={{textAlign: 'center', fontWeight: '700', fontSize: 15, color: 'white'}}>Ver Detalles</Text>
                </TouchableOpacity>
             </View>

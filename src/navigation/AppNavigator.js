@@ -8,6 +8,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "react-native";
 import HomeScreen from "../screens/HomeScreen";
 import MisCitas from "../screens/MisCitas";
+import ReservarCitaScreen from '../screens/ReservarCitaScreen';
+import RegisterScreen from "../screens/RegisterScreen";
+import AppointmentDetailsScreen from "../screens/DetalleCita";
 
 const Stack = createNativeStackNavigator();
 
@@ -51,10 +54,10 @@ export default function AppNavigator() {
                }}
             />
             <Stack.Screen
-               name = "HistorialMedico"
-               component = {HistorialMedicoScreen}
+               name = "Register"
+               component = {RegisterScreen}
                options={{
-                  title: 'Historial Médico'
+                  headerShown: false
                }}
             />
             <Stack.Screen
@@ -69,6 +72,27 @@ export default function AppNavigator() {
                component = {HomeScreen}
                options={{
                   headerShown: false
+               }}
+            />
+            <Stack.Screen
+               name = "ReservarCita"
+               component = {ReservarCitaScreen}
+               options={{
+                  title: 'Reservar cita'
+               }}
+            />
+            <Stack.Screen
+               name = "HistorialMedico"
+               component = {HistorialMedicoScreen}
+               options={{
+                  title: 'Historial Médico'
+               }}
+            />
+            <Stack.Screen
+               name = "DetalleCita"
+               component = {AppointmentDetailsScreen}
+               options={{
+                  title: 'Detalles de la Cita'
                }}
             />
          </Stack.Navigator>
