@@ -11,6 +11,7 @@ import MisCitas from "../screens/MisCitas";
 import ReservarCitaScreen from '../screens/ReservarCitaScreen';
 import RegisterScreen from "../screens/RegisterScreen";
 import AppointmentDetailsScreen from "../screens/DetalleCita";
+import ProfileScreen from "../screens/ProfileScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -61,13 +62,6 @@ export default function AppNavigator() {
                }}
             />
             <Stack.Screen
-               name = "MisCitas"
-               component = {MisCitas}
-               options={{
-                  title: 'Mis citas'
-               }}
-            />
-            <Stack.Screen
                name = "Home"
                component = {HomeScreen}
                options={{
@@ -75,10 +69,24 @@ export default function AppNavigator() {
                }}
             />
             <Stack.Screen
+               name = "Profile"
+               component = {ProfileScreen}
+               options={{
+                  title: 'Perfil del paciente'
+               }}
+            />
+            <Stack.Screen
                name = "ReservarCita"
                component = {ReservarCitaScreen}
                options={{
                   title: 'Reservar cita'
+               }}
+            />
+            <Stack.Screen
+               name = "MisCitas"
+               component = {MisCitas}
+               options={{
+                  title: 'Mis citas'
                }}
             />
             <Stack.Screen
