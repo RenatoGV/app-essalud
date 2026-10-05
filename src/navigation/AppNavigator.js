@@ -7,6 +7,7 @@ import { colors } from "../constants/styles";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "react-native";
 import HomeScreen from "../screens/HomeScreen";
+import MisCitas from "../screens/MisCitas";
 import ReservarCitaScreen from '../screens/ReservarCitaScreen';
 import RegisterScreen from "../screens/RegisterScreen";
 import AppointmentDetailsScreen from "../screens/DetalleCita";
@@ -57,6 +58,13 @@ export default function AppNavigator() {
                component = {RegisterScreen}
                options={{
                   headerShown: false
+               }}
+            />
+            <Stack.Screen
+               name = "MisCitas"
+               component = {MisCitas}
+               options={{
+                  title: 'Mis citas'
                }}
             />
             <Stack.Screen

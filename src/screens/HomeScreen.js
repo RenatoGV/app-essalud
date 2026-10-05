@@ -37,6 +37,7 @@ export default function HomeScreen() {
          icon: (props) => (
             <FontAwesome6 {...props} name="clock" />
          ),
+         onPress: () => navigation.navigate('MisCitas'),
       },
       {
          title: 'Historial Médico',
@@ -86,7 +87,7 @@ export default function HomeScreen() {
 
             <View style={styles.nextDateContainer}>
                <Text style={styles.nextDateTitle}>Tu próxima cita</Text>
-               <TouchableOpacity style={{flexDirection: 'row', gap: 5, alignItems: 'center'}}>
+               <TouchableOpacity style={{flexDirection: 'row', gap: 5, alignItems: 'center'}} onPress={() => navigation.navigate('MisCitas')}>
                   <Text style={styles.nextDateTextButton}>Ver todas</Text>
                   <FontAwesome5 name="arrow-right" size={14} color={colors.primary} />
                </TouchableOpacity>
