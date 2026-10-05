@@ -6,4 +6,5 @@ export const colors = {
    secondary: '#055074',
    disabled: '#616161',
    muted: '#687583',
+   danger: '#e01414'
 }

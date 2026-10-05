@@ -60,14 +60,14 @@ export default function HomeScreen() {
       <SafeAreaView edges={['top']} style={styles.container}>
          <View style={styles.header}>
             <Text style={styles.logo}>Essalud</Text>
-            <View style={styles.photoContainer}>
+            <TouchableOpacity style={styles.photoContainer} onPress={() => navigation.navigate('Profile')}>
                {
                   user.photo
                      ? <Image source={{ uri: user.photo }} style={{ width: '100%', height: '100%' }} />
                      : <Ionicons color={colors.primary} name="person-circle-outline" size={50} />
                }
                
-            </View>
+            </TouchableOpacity>
          </View>
          <View style={styles.content}>
             <Text style={styles.title}>Hola, {user.name}</Text>
