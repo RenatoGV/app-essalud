@@ -1,4 +1,4 @@
-import { FlatList, Image, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/styles";
 import { Feather, FontAwesome, FontAwesome5, FontAwesome6, Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -113,7 +113,7 @@ export default function HomeScreen() {
                      <Text style={{fontSize: 13, color: colors.input}}>{nextDate.details}</Text>
                   </View>
                </View>
-               <TouchableOpacity style={styles.button}>
+               <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('DetalleCita')}>
                   <Text style={{textAlign: 'center', fontWeight: '700', fontSize: 15, color: 'white'}}>Ver Detalles</Text>
                </TouchableOpacity>
             </View>
