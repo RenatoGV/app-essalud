@@ -36,11 +36,16 @@ export default function LoginScreen() {
       }
 
       setLoading(false);
-      
+
+      //esto es temporal que en esta rama no esta el home
+      Alert.alert("¡Éxito!", "Login correcto. (El desvío a Home está en otra rama)");
+
+      /*
       navigation.reset({
          index: 0,
          routes: [{ name: 'Home' }],
       });
+      */
    }
 
    return (
@@ -97,8 +102,7 @@ export default function LoginScreen() {
             <TouchableOpacity 
                style={[styles.button, { backgroundColor: colors.secondary }]}
                disabled={loading}
-               // Cuando se trabaje en la rama de registro
-               // onPress={() => navigation.navigate('Registro')}
+               onPress={() => navigation.navigate('Register')}
             >
                <Text style={styles.textButton}>Crear cuenta</Text>
             </TouchableOpacity>
