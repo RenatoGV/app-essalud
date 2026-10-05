@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/styles';
+import { formatDate } from '../helpers/Formatter';
 
-// Presenta una cita, la pantalla decide qué hacer con cada acción
- 
 export default function CitaCard({ cita, onVerDetalles, onGestionarCita }) {
   const descripcionCita = `${cita.especialidad}, ${cita.fechaTexto}, ${cita.horaTexto}, con ${cita.doctor}`;
 
@@ -18,8 +17,8 @@ export default function CitaCard({ cita, onVerDetalles, onGestionarCita }) {
           style={styles.calendarIcon}
         />
         <View style={styles.dateContainer}>
-          <Text style={styles.dateText}>{cita.fechaTexto}</Text>
-          <Text style={styles.timeText}>{cita.horaTexto}</Text>
+          <Text style={styles.dateText}>{formatDate(cita.fecha)}</Text>
+          <Text style={styles.timeText}>{cita.hora}</Text>
         </View>
       </View>
 
