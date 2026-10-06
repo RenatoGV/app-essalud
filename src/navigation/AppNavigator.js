@@ -12,6 +12,7 @@ import ReservarCitaScreen from '../screens/ReservarCitaScreen';
 import RegisterScreen from "../screens/RegisterScreen";
 import AppointmentDetailsScreen from "../screens/DetalleCita";
 import ProfileScreen from "../screens/ProfileScreen";
+import CentrosSaludScreen from "../screens/CentrosSaludScreen";
 import { supabase } from '../supabase/supabaseClient';
 import { useEffect, useState } from "react";
 
@@ -132,6 +133,13 @@ export default function AppNavigator() {
                component = {HistorialMedicoScreen}
                options={{
                   title: 'Historial Médico'
+               }}
+            />
+            <Stack.Screen
+               name="CentrosSalud"
+               component={CentrosSaludScreen}
+               options={{
+                  title: "Centros de Salud",
                }}
             />
             <Stack.Screen
