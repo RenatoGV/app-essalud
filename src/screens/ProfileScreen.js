@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/styles";
 import { useState } from "react";
 import ProfileInput from "../components/ProfileInput";
 import { useNavigation } from "@react-navigation/native";
 import ImagePickerModal from "../components/ImagePicker";
+import { supabase } from "../supabase/supabaseClient";
 
 const user = {
    dni: '1234578',
@@ -21,6 +22,8 @@ const user = {
 export default function ProfileScreen() {
    const navigation = useNavigation()
 
+   const [loading, setLoading] = useState(false)
+
    const [showPicker, setShowPicker] = useState(false)
    const [photo, setPhoto] = useState(user.photo)
 
@@ -32,8 +35,21 @@ export default function ProfileScreen() {
    const [address, setAddress] = useState(user.address)
 
    const handleSelectImage = (uri) => {
-      setPhoto(uri);
-   };
+      setPhoto(uri)
+   }
+
+   const logout = async () => {
+      setLoading(true)
+      
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+         console.error('Error al cerrar sesión:', error)
+         return
+      }
+
+      navigation.reset({ index: 0, routes: [{ name: 'Login' }] })
+   }
 
    return (
       <SafeAreaView edges={['top']} style={styles.container}>
@@ -80,8 +96,11 @@ export default function ProfileScreen() {
                <Text style={styles.textButton}>Cambiar contraseña</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.button, { backgroundColor: colors.danger, marginBottom: 50 }]} onPress={() => navigation.reset({index: 0, routes: [{ name: 'Login' }]})}>
-               <Text style={styles.textButton}>Cerrar sesión</Text>
+            <TouchableOpacity style={[styles.button, { backgroundColor: colors.danger, marginBottom: 50 }]} onPress={logout} disabled={loading}>
+               { loading
+                  ? <ActivityIndicator color="white" />
+                  : <Text style={styles.textButton}>Cerrar sesión</Text>
+               }
             </TouchableOpacity>
          </ScrollView>
       </SafeAreaView>

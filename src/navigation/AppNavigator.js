@@ -5,13 +5,15 @@ import LoginScreen from "../screens/LoginScreen";
 import HistorialMedicoScreen from "../screens/HistorialMedicoScreen";
 import { colors } from "../constants/styles";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import HomeScreen from "../screens/HomeScreen";
 import MisCitas from "../screens/MisCitas";
 import ReservarCitaScreen from '../screens/ReservarCitaScreen';
 import RegisterScreen from "../screens/RegisterScreen";
 import AppointmentDetailsScreen from "../screens/DetalleCita";
 import ProfileScreen from "../screens/ProfileScreen";
+import { supabase } from '../supabase/supabaseClient';
+import { useEffect, useState } from "react";
 
 const Stack = createNativeStackNavigator();
 
@@ -30,10 +32,46 @@ function BackButton({ canGoBack, tintColor }) {
 }
 
 export default function AppNavigator() {
+   const [session, setSession] = useState(null)
+   const [loading, setLoading] = useState(true)
+
+   useEffect(() => {
+      const getSession = async () => {
+         try {
+            const { data } = await supabase.auth.getSession()
+
+            setSession(data.session)
+         } finally {
+            setLoading(false)
+         }
+      }
+      
+      void getSession().catch((error) => {
+         console.error("Error al obtener la sesión:", error)
+         setLoading(false)
+      })
+
+      const { data : listener } = supabase.auth.onAuthStateChange(
+         (_, session) => {
+            setSession(session)
+         }
+      )
+
+      return () => listener.subscription.unsubscribe()
+   }, [])
+
+   if (loading) {
+      return (
+         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.primary }}>
+            <ActivityIndicator color={'white'} />
+         </View>
+      );
+   }
+
    return (
       <NavigationContainer>
          <Stack.Navigator
-            initialRouteName="Login"
+            initialRouteName={session ? "Home" : "Login"}
             screenOptions={{
                headerBackVisible: false,
                headerStyle: {

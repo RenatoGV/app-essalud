@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
@@ -42,8 +41,8 @@ function SeparadorCitas() {
 
 export default function MisCitas() {
   const navigation = useNavigation()
-
-  const [citasManana, setCitasManana] = useState(3)
+  
+  const citasManana = 3
 
   const handleVerDetalles = (id) => {
     navigation.navigate('DetalleCita')
