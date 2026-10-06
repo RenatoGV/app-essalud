@@ -53,6 +53,7 @@ export default function HomeScreen() {
          icon: (props) => (
             <FontAwesome {...props} name="building-o" />
          ),
+         onPress: () => navigation.navigate('CentrosSalud'),
       },
    ]
 
