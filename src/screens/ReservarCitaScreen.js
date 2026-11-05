@@ -25,17 +25,11 @@ const HORARIO_TARDE = [
   { hora: '05:45', periodo: 'p.m.', ocupado: true  }
 ]
 
-const CENTROS_DE_SALUD = [
-  'Hospital Nacional Edgardo Rebagliati',
-  'Otro'
-]
-
 export default function ReservarCitaScreen() {
-  const { specialties } = useAppData();
-
-  const [centro, setCentro] = useState(CENTROS_DE_SALUD.at(0))
+  const { specialties, medicalCenters } = useAppData();
 
   const [especialidad, setEspecialidad] = useState(null)
+  const [centro, setCentro] = useState(null)
 
   const [showPicker, setShowPicker] = useState(false)
   const [date, setDate] = useState(new Date())
@@ -57,6 +51,12 @@ export default function ReservarCitaScreen() {
       setEspecialidad(specialties[0]);
     }
   }, [specialties, especialidad]);
+
+  useEffect(() => {
+    if (medicalCenters.length > 0 && !centro) {
+      setCentro(medicalCenters[0]);
+    }
+  }, [medicalCenters, centro]);
 
   return (
     <View style={styles.container}>
@@ -82,10 +82,10 @@ export default function ReservarCitaScreen() {
           <Text style={styles.label}>Seleccione el centro de salud</Text>
           <SearchableSelector
             label="Seleccione el centro de salud"
-            data={CENTROS_DE_SALUD}
+            data={medicalCenters}
             selectedItem={centro}
             onSelect={setCentro}
-            getLabel={(item) => item}
+            getLabel={(item) => item.centro_medico}
             placeholder="Seleccione el centro de salud"
           />
         </View>
