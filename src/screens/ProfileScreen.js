@@ -7,6 +7,7 @@ import ProfileInput from "../components/ProfileInput";
 import { useNavigation } from "@react-navigation/native";
 import ImagePickerModal from "../components/ImagePicker";
 import { supabase } from "../supabase/supabaseClient";
+import { useAppData } from "../context/AppDataContext";
 
 const user = {
    dni: '1234578',
@@ -21,6 +22,7 @@ const user = {
 
 export default function ProfileScreen() {
    const navigation = useNavigation()
+   const { clearAppData } = useAppData();
 
    const [loading, setLoading] = useState(false)
 
@@ -47,6 +49,8 @@ export default function ProfileScreen() {
          console.error('Error al cerrar sesión:', error)
          return
       }
+
+      clearAppData();
 
       navigation.reset({ index: 0, routes: [{ name: 'Login' }] })
    }
