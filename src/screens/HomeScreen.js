@@ -1,9 +1,11 @@
-import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/styles";
 import { Feather, FontAwesome, FontAwesome5, FontAwesome6, Ionicons, MaterialIcons } from "@expo/vector-icons";
 import HomeButtonItem from "../components/HomeButtonItem";
 import { useNavigation } from "@react-navigation/native";
+import { useEffect } from "react";
+import { useAppData } from "../context/AppDataContext";
 
 const user = {
    name: 'Juan',
@@ -20,7 +22,28 @@ const nextDate = {
 }
 
 export default function HomeScreen() {
-   const navigation = useNavigation()
+   const navigation = useNavigation();
+   const { loading, loadAppData, error } = useAppData();
+
+   useEffect(() => {
+      loadAppData().catch(() => {});
+   }, [loadAppData]);
+
+   if (loading) {
+      return (
+         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" />
+         </View>
+      );
+   }
+
+   if (error) {
+      return (
+         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ textAlign: 'center' }}>Error al cargar la información.</Text>
+         </View>
+      );
+   }
 
    const items = [
       {

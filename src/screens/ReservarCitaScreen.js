@@ -4,6 +4,8 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { colors } from '../constants/styles';
 import { Host, DatePickerDialog } from '@expo/ui/jetpack-compose';
 import { formatDate } from '../helpers/Formatter';
+import { useAppData } from '../context/AppDataContext';
+import SearchableSelector from '../components/SearchableSelector';
 
 const HORARIO_MANANA = [
   { hora: '08:30', periodo: 'a.m.' },
@@ -28,20 +30,12 @@ const CENTROS_DE_SALUD = [
   'Otro'
 ]
 
-const ESPECIALIDADES = [
-  'Cardiología',
-  'Dermatología',
-  'Medicina general',
-  'Pediatría',
-  'Traumatología',
-]
-
 export default function ReservarCitaScreen() {
-  const [showCentros, setShowCentros] = useState(false)
+  const { specialties } = useAppData();
+
   const [centro, setCentro] = useState(CENTROS_DE_SALUD.at(0))
 
-  const [showEspecialidades, setShowEspecialidades] = useState(false)
-  const [especialidad, setEspecialidad] = useState(ESPECIALIDADES.at(0))
+  const [especialidad, setEspecialidad] = useState(null)
 
   const [showPicker, setShowPicker] = useState(false)
   const [date, setDate] = useState(new Date())
@@ -57,66 +51,43 @@ export default function ReservarCitaScreen() {
 
     setHoraSeleccionada(null)
   }, [turno])
-  
+
+  useEffect(() => {
+    if (specialties.length > 0 && !especialidad) {
+      setEspecialidad(specialties[0]);
+    }
+  }, [specialties, especialidad]);
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} nestedScrollEnabled>
         <Text style={styles.title}>
           Reservación de nueva cita{'\n'}médica
         </Text>
 
-        <View style={[styles.dropdownContainer, {zIndex: 2}]}>
+        <View style={styles.dropdownContainer}>
           <Text style={styles.label}>Seleccione la especialidad</Text>
-          <Pressable style={styles.selector} onPress={() => setShowEspecialidades(!showEspecialidades)}>
-            <Text style={styles.selectorText} numberOfLines={1}>{especialidad}</Text>
-            <Ionicons name={showEspecialidades ? 'chevron-up' : 'chevron-down'} size={18} color={colors.input} />
-          </Pressable>
-          {showEspecialidades && (
-            <View style={styles.dropdown}>
-              {ESPECIALIDADES.map((item) => (
-                <Pressable
-                  key={item}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                      setEspecialidad(item);
-                      setShowEspecialidades(false);
-                  }}
-                >
-                  <Text style={styles.dropdownText}>
-                      {item}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          <SearchableSelector
+            label="Seleccione la especialidad"
+            data={specialties}
+            selectedItem={especialidad}
+            onSelect={setEspecialidad}
+            getLabel={(item) => item.especialidad}
+            placeholder="Seleccione una especialidad"
+          />
         </View>
 
-        <View style={[styles.dropdownContainer, {zIndex: 1}]}>
+        <View style={styles.dropdownContainer}>
           <Text style={styles.label}>Seleccione el centro de salud</Text>
-          <Pressable style={styles.selector} onPress={() => setShowCentros(!showCentros)}>
-            <Text style={styles.selectorText} numberOfLines={1}>{centro}</Text>
-            <Ionicons name={showCentros ? 'chevron-up' : 'chevron-down'} size={18} color={colors.input} />
-          </Pressable>
-          {showCentros && (
-            <View style={styles.dropdown}>
-              {CENTROS_DE_SALUD.map((item) => (
-                <Pressable
-                  key={item}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                      setCentro(item);
-                      setShowCentros(false);
-                  }}
-                >
-                  <Text style={styles.dropdownText}>
-                      {item}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          <SearchableSelector
+            label="Seleccione el centro de salud"
+            data={CENTROS_DE_SALUD}
+            selectedItem={centro}
+            onSelect={setCentro}
+            getLabel={(item) => item}
+            placeholder="Seleccione el centro de salud"
+          />
         </View>
 
         <View>
@@ -260,29 +231,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     marginRight: 8,
-  },
-  dropdownContainer: {
-    position: 'relative',
-    zIndex: 10,
-  },
-  dropdown: {
-    position: 'absolute',
-    top: 76,
-    left: 0,
-    right: 0,
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: colors.input,
-    borderRadius: 9,
-    elevation: 5,
-    zIndex: 20,
-  },
-  dropdownItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  dropdownText: {
-    fontSize: 14,
   },
   turnoContainer: {
     flexDirection: 'row',
