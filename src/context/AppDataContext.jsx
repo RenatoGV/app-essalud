@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { getSpecialties } from "../services/specialtyService";
+import { getMedicalCenters } from "../services/medicalCenterService";
 
 const AppDataContext = createContext(null);
 
 export const AppDataProvider = ({ children }) => {
    const [specialties, setSpecialties] = useState([]);
+   const [medicalCenters, setMedicalCenters] = useState([]);
 
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState(null);
@@ -21,11 +23,13 @@ export const AppDataProvider = ({ children }) => {
       setError(null);
 
       try {
-         const [specialtiesData] = await Promise.all([
-            getSpecialties()
+         const [specialtiesData, medicalCentersData] = await Promise.all([
+            getSpecialties(),
+            getMedicalCenters()
          ]);
          
          setSpecialties(specialtiesData);
+         setMedicalCenters(medicalCentersData);
 
          loadedRef.current = true;
       } catch (e) {
@@ -38,15 +42,20 @@ export const AppDataProvider = ({ children }) => {
       }
    }, []);
 
-
    const refreshSpecialties = useCallback(async () => {
       const data = await getSpecialties();
       setSpecialties(data);
       return data;
    }, []);
+   const refreshMedicalCenters = useCallback(async () => {
+      const data = await getMedicalCenters();
+      setMedicalCenters(data);
+      return data;
+   }, []);
 
    const clearAppData = useCallback(() => {
       setSpecialties([]);
+      setMedicalCenters([]);
       setError(null);
 
       loadedRef.current = false;
@@ -54,7 +63,7 @@ export const AppDataProvider = ({ children }) => {
    }, []);
 
    const value = useMemo(
-      () => ({ specialties, loading, error, loadAppData, refreshSpecialties, clearAppData }),
+      () => ({ specialties, medicalCenters, loading, error, loadAppData, refreshSpecialties, refreshMedicalCenters, clearAppData }),
       [specialties, loading, loadAppData]
    );
 
