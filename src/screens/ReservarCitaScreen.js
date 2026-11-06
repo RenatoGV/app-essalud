@@ -1,50 +1,83 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { colors } from '../constants/styles';
 import { Host, DatePickerDialog } from '@expo/ui/jetpack-compose';
-import { formatDate } from '../helpers/Formatter';
+import { formatDate, formatDateForDatabase } from '../helpers/Formatter';
 import { useAppData } from '../context/AppDataContext';
 import SearchableSelector from '../components/SearchableSelector';
-
-const HORARIO_MANANA = [
-  { hora: '08:30', periodo: 'a.m.' },
-  { hora: '09:15', periodo: 'a.m.', ocupado: true },
-  { hora: '10:00', periodo: 'a.m.' },
-  { hora: '11:15', periodo: 'a.m.' },
-  { hora: '11:45', periodo: 'a.m.' },
-  { hora: '12:00', periodo: 'p.m.' },
-];
-
-const HORARIO_TARDE = [
-  { hora: '02:00', periodo: 'p.m.' },
-  { hora: '03:15', periodo: 'p.m.', ocupado: true },
-  { hora: '04:00', periodo: 'p.m.' },
-  { hora: '04:45', periodo: 'p.m.', ocupado: true  },
-  { hora: '05:00', periodo: 'p.m.' },
-  { hora: '05:45', periodo: 'p.m.', ocupado: true  }
-]
+import { getDoctorsByMedicalCenterAndSpecialty } from '../services/doctorService';
+import { getAvailableSlots } from '../services/availabilityService';
+import { createAppointment } from '../services/appointmentService';
 
 export default function ReservarCitaScreen() {
   const { specialties, medicalCenters } = useAppData();
+  const [doctors, setDoctors] = useState([]);
 
-  const [especialidad, setEspecialidad] = useState(null)
-  const [centro, setCentro] = useState(null)
+  const [especialidad, setEspecialidad] = useState(null);
+  const [centro, setCentro] = useState(null);
+  const [doctor, setDoctor] = useState(null);
 
-  const [showPicker, setShowPicker] = useState(false)
-  const [date, setDate] = useState(new Date())
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [doctorError, setDoctorError] = useState(false);
 
-  const [horario, setHorario] = useState(HORARIO_MANANA)
-  const [turno, setTurno] = useState('manana')
+  const [showPicker, setShowPicker] = useState(false);
+  const [date, setDate] = useState(new Date());
 
-  const [horaSeleccionada, setHoraSeleccionada] = useState(null)
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState(false);
+
+  const [dateSelected, setDateSelected] = useState(false);
+  const [turno, setTurno] = useState('manana');
+  const [horaSeleccionada, setHoraSeleccionada] = useState(null);
+
+  const [loadingAppointment, setLoadingAppointment] = useState(false);
 
   useEffect(() => {
-    if(turno === 'manana') setHorario(HORARIO_MANANA)
-    else setHorario(HORARIO_TARDE)
+    let isMounted = true;
 
-    setHoraSeleccionada(null)
-  }, [turno])
+    const loadDoctors = async () => {
+      if (!centro?.id || !especialidad?.id) {
+        setDoctors([]);
+        setDoctor(null);
+        setLoadingDoctors(false);
+        return;
+      }
+
+      setDoctor(null);
+      setDoctors([]);
+      setDoctorError(false);
+      setLoadingDoctors(true);
+
+      try {
+        const data = await getDoctorsByMedicalCenterAndSpecialty(
+          centro.id,
+          especialidad.id
+        );
+
+        if (isMounted) {
+          setDoctors(data);
+        }
+      } catch (error) {
+        console.error('Error al cargar médicos:', error);
+
+        if (isMounted) {
+          setDoctorError(true);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingDoctors(false);
+        }
+      }
+    };
+
+    void loadDoctors();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [centro?.id, especialidad?.id]);
 
   useEffect(() => {
     if (specialties.length > 0 && !especialidad) {
@@ -58,6 +91,77 @@ export default function ReservarCitaScreen() {
     }
   }, [medicalCenters, centro]);
 
+  useEffect(() => {
+    if (!doctor || !dateSelected) {
+      setAvailableSlots([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadAvailableSlots = async () => {
+      setLoadingSlots(true);
+      setSlotsError(false);
+      setAvailableSlots([]);
+      setHoraSeleccionada(null);
+
+      try {
+        const formattedDate = formatDateForDatabase(date);
+
+        const slots = await getAvailableSlots(doctor.id, formattedDate, turno);
+
+        if (isMounted) {
+          setAvailableSlots(slots);
+        }
+      } catch (error) {
+        console.error("Error al consultar horarios:", error);
+
+        if (isMounted) {
+          setSlotsError(true);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingSlots(false);
+        }
+      }
+    };
+
+    void loadAvailableSlots();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [doctor, date, dateSelected, turno]);
+
+  const handleRegisterAppointment = async () => {
+    if (!doctor || !dateSelected || !horaSeleccionada) {
+      Alert.alert('Atención', 'Completa todos los campos para registrar la cita.');
+      return;
+    }
+
+    try {
+      setLoadingAppointment(true);
+
+      await createAppointment({
+        doctorId: doctor.id,
+        date: formatDateForDatabase(date),
+        time: horaSeleccionada
+      });
+
+      Alert.alert('Cita registrada', 'Tu cita se registró correctamente.');
+
+      setHoraSeleccionada(null);
+      setDateSelected(false);
+      setAvailableSlots([]);
+    } catch (error) {
+      console.error('Error al registrar la cita:', error);
+
+      Alert.alert('Error', 'No se pudo registrar la cita. Es posible que el horario ya esté ocupado.');
+    } finally {
+      setLoadingAppointment(false);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
@@ -65,6 +169,18 @@ export default function ReservarCitaScreen() {
         <Text style={styles.title}>
           Reservación de nueva cita{'\n'}médica
         </Text>
+
+        <View style={styles.dropdownContainer}>
+          <Text style={styles.label}>Seleccione el centro de salud</Text>
+          <SearchableSelector
+            label="Seleccione el centro de salud"
+            data={medicalCenters}
+            selectedItem={centro}
+            onSelect={setCentro}
+            getLabel={(item) => item.centro_medico}
+            placeholder="Seleccione el centro de salud"
+          />
+        </View>
 
         <View style={styles.dropdownContainer}>
           <Text style={styles.label}>Seleccione la especialidad</Text>
@@ -79,34 +195,80 @@ export default function ReservarCitaScreen() {
         </View>
 
         <View style={styles.dropdownContainer}>
-          <Text style={styles.label}>Seleccione el centro de salud</Text>
-          <SearchableSelector
-            label="Seleccione el centro de salud"
-            data={medicalCenters}
-            selectedItem={centro}
-            onSelect={setCentro}
-            getLabel={(item) => item.centro_medico}
-            placeholder="Seleccione el centro de salud"
-          />
+          <Text style={styles.label}>Seleccione el médico</Text>
+
+          {loadingDoctors ? (
+            <View style={styles.doctorMessage}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.doctorMessageText}>
+                Buscando médicos disponibles...
+              </Text>
+            </View>
+          ) : doctorError ? (
+            <View style={styles.doctorMessage}>
+              <Text style={styles.doctorErrorText}>
+                No se pudieron cargar los médicos. Intente nuevamente.
+              </Text>
+            </View>
+          ) : doctors.length > 0 ? (
+            <SearchableSelector
+              label="Seleccione el médico"
+              data={doctors}
+              selectedItem={doctor}
+              onSelect={(selectedDoctor) => {
+                setDoctor(selectedDoctor);
+                setDate(new Date());
+                setDateSelected(false);
+                setHoraSeleccionada(null);
+                setAvailableSlots([]);
+                setSlotsError(false);
+              }}
+              getLabel={(item) => `${item.nombres} ${item.apaterno} ${item.amaterno}`}
+              placeholder="Seleccione un médico"
+            />
+          ) : (
+            <View style={styles.doctorMessage}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={20}
+                color={colors.disabled}
+              />
+              <Text style={styles.doctorMessageText}>
+                No hay médicos disponibles.
+              </Text>
+            </View>
+          )}
         </View>
 
         <View>
           <Text style={styles.label}>Seleccione fecha</Text>
-          <Pressable style={styles.selector} onPress={() => setShowPicker(true)}>
-            <Text style={styles.selectorText} numberOfLines={1}>{formatDate(date)}</Text>
-            <Ionicons name='calendar-outline' size={20} color={colors.input} />
+          <Pressable
+            disabled={!doctor}
+            style={[
+              styles.selector,
+              !doctor && { opacity: 0.5 },
+            ]}
+            onPress={() => setShowPicker(true)}
+          >
+            <Text style={styles.selectorText} numberOfLines={1}>
+              {dateSelected ? formatDate(date) : 'Seleccione una fecha'}
+            </Text>
+
+            <Ionicons name="calendar-outline" size={20} color={colors.input} />
           </Pressable>
+
           {showPicker && (
             <Host>
               <DatePickerDialog
                 initialDate={date.toISOString()}
                 onDateSelected={(selectedDate) => {
-                    setDate(selectedDate);
-                    setShowPicker(false);
+                  setDate(selectedDate);
+                  setDateSelected(true);
+                  setShowPicker(false);
                 }}
                 onDismissRequest={() => setShowPicker(false)}
                 color={colors.primary}
-                selectableDates={{start: new Date()}}
+                selectableDates={{ start: new Date() }}
               />
             </Host>
           )}
@@ -115,7 +277,8 @@ export default function ReservarCitaScreen() {
         <Text style={styles.label}>Seleccione horario disponible</Text>
         <View style={styles.turnoContainer}>
           <TouchableOpacity
-            style={[styles.turnoTab, turno === 'manana' && styles.turnoTabActive]}
+            disabled={!doctor}
+            style={[styles.turnoTab, turno === 'manana' && styles.turnoTabActive, !doctor && { opacity: 0.5 }]}
             onPress={() => setTurno('manana')}
             activeOpacity={0.8}
           >
@@ -125,18 +288,21 @@ export default function ReservarCitaScreen() {
               color={turno === 'manana' ? colors.input : colors.disabled}
               style={styles.turnoIcon}
             />
+
             <View>
               <Text style={[styles.turnoTitle, turno === 'manana' ? styles.textActive : styles.textInactive]}>
                 Mañana
               </Text>
+
               <Text style={[styles.turnoSub, turno === 'manana' ? styles.textActive : styles.textInactive]}>
-                (08:00 - 12:30)
+                (Antes de las 14:00)
               </Text>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.turnoTab, turno === 'tarde' && styles.turnoTabActive]}
+            disabled={!doctor}
+            style={[styles.turnoTab, turno === 'tarde' && styles.turnoTabActive, !doctor && { opacity: 0.5 }]}
             onPress={() => setTurno('tarde')}
             activeOpacity={0.8}
           >
@@ -146,33 +312,92 @@ export default function ReservarCitaScreen() {
               color={turno === 'tarde' ? colors.input : colors.disabled}
               style={styles.turnoIcon}
             />
+
             <View>
               <Text style={[styles.turnoTitle, turno === 'tarde' ? styles.textActive : styles.textInactive]}>
                 Tarde
               </Text>
+
               <Text style={[styles.turnoSub, turno === 'tarde' ? styles.textActive : styles.textInactive]}>
-                (14:00 - 18:30)
+                (Desde las 14:00)
               </Text>
             </View>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.horasGrid}>
-          {horario.map((item) => {
-            const seleccionada = horaSeleccionada === item.hora;
+        <View>
+          {!doctor || !dateSelected ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <Feather name="calendar" size={28} color="#999" />
 
-            return (
-              <Pressable key={item.hora} disabled={item.ocupado} style={[styles.horaCard, item.ocupado && styles.horaOcupado, seleccionada && styles.horaSeleccionada ]} onPress={() => setHoraSeleccionada(item.hora)}>
-                <Text style={[styles.horaText, item.ocupado && styles.textMuted, seleccionada && styles.horaTextSeleccionada]}>
-                  {item.hora}
-                </Text>
+              <Text style={[styles.doctorMessageText, { marginTop: 8 }]}>
+                Selecciona un médico y la fecha para consultar sus horarios.
+              </Text>
+            </View>
+          ) : loadingSlots ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : slotsError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <Feather name="calendar" size={28} color="#999" />
 
-                <Text style={[styles.periodoText, item.ocupado && styles.textMuted, seleccionada && styles.horaTextSeleccionada]}>
-                  {item.periodo}
-                </Text>
-              </Pressable>
-            );
-          })}
+              <Text style={[styles.doctorMessageText, { marginTop: 8 }]}>
+                No se pudieron cargar los horarios.
+              </Text>
+
+              <Text style={[
+                styles.doctorMessageText,
+                { textAlign: 'center', marginTop: 4 },
+              ]}>
+                Inténtalo nuevamente.
+              </Text>
+            </View>
+          ) : availableSlots.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <Feather name="calendar" size={28} color="#999" />
+
+              <Text style={[styles.doctorMessageText, { marginTop: 8 }]}>
+                Sin horarios disponibles
+              </Text>
+
+              <Text style={[
+                styles.doctorMessageText,
+                { textAlign: 'center', marginTop: 4 },
+              ]}>
+                El médico no tiene horarios disponibles para esta fecha y turno.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.horasGrid}>
+              {availableSlots.map((slot) => {
+                const isOccupied = slot.ocupado;
+                const isSelected = horaSeleccionada === slot.hora;
+
+                return (
+                  <TouchableOpacity
+                    key={slot.hora}
+                    disabled={isOccupied}
+                    style={[styles.horaCard, isOccupied && styles.horaOcupado, isSelected && styles.horaSeleccionada]}
+                    onPress={() => setHoraSeleccionada(slot.hora)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.horaText,
+                      isOccupied && styles.textMuted,
+                      isSelected && styles.horaTextSeleccionada,
+                    ]}>
+                      {slot.hora}
+                    </Text>
+                    
+                    {isOccupied && (
+                      <Text style={[styles.periodoText, styles.textMuted]}>
+                        Ocupado
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         <View style={styles.infoBox}>
@@ -187,8 +412,22 @@ export default function ReservarCitaScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.submitButton} activeOpacity={0.85}>
-          <Text style={styles.submitButtonText}>Registrar cita</Text>
+        <TouchableOpacity
+          disabled={!doctor || !dateSelected || !horaSeleccionada || loadingAppointment}
+          onPress={handleRegisterAppointment}
+          style={[
+            styles.submitButton,
+            (!doctor || !dateSelected || !horaSeleccionada || loadingAppointment) && { opacity: 0.5 },
+          ]}
+          activeOpacity={0.85}
+        >
+          {
+            loadingAppointment ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.submitButtonText}>Registrar cita</Text>
+            )
+          }
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -231,6 +470,29 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     marginRight: 8,
+  },
+  dropdownContainer: {
+    marginBottom: 4,
+  },
+  doctorMessage: {
+    minHeight: 48,
+    borderWidth: 1.5,
+    borderColor: colors.input,
+    borderRadius: 9,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  doctorMessageText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.disabled
+  },
+  doctorErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#DC2626',
   },
   turnoContainer: {
     flexDirection: 'row',
