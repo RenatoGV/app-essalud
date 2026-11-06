@@ -1,43 +1,78 @@
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { colors } from '../constants/styles';
 import { useRef, useState } from 'react';
 import { FontAwesome, MaterialIcons } from '@expo/vector-icons';
+import { useAppData } from '../context/AppDataContext';
 
-export default function ProfileInput({ value, setValue, placeholder }) {
-   const [editValue, setEditValue] = useState(false)
-   const inputRef = useRef(null)
+export default function ProfileInput({ value, setValue, placeholder, columnName }) {
+   const [editing, setEditing] = useState(false);
+   const [saving, setSaving] = useState(false);
+   const [previousValue, setPreviousValue] = useState(value);
+
+   const inputRef = useRef(null);
+   const { updateProfile } = useAppData();
+
+   const handleEdit = () => {
+      setPreviousValue(value);
+      setEditing(true);
+   };
+
+   const handleSave = async () => {
+      try {
+         setSaving(true);
+         await updateProfile(columnName, value);
+
+         setEditing(false);
+      } catch (error) {
+         console.error('Error actualizando perfil:', error);
+      } finally {
+         setSaving(false);
+      }
+   };
+
+   const handleCancel = () => {
+      setValue(previousValue);
+      setEditing(false);
+   };
 
    return (
       <View style={styles.inputContainer}>
          {
-            editValue
-               ?  <TextInput
-                     style={styles.input}
-                     ref={inputRef}
-                     value={value}
-                     placeholder={placeholder}
-                     placeholderTextColor={colors.input}
-                     keyboardType="default"
-                     autoCapitalize="none"
-                     onChangeText={setValue}
-                     autoFocus={true}
-                  />
-               :  <Text style={styles.input}>{value}</Text>
+            editing ?
+               <TextInput
+                  style={styles.input}
+                  ref={inputRef}
+                  value={value}
+                  placeholder={placeholder}
+                  placeholderTextColor={colors.input}
+                  keyboardType="default"
+                  autoCapitalize="none"
+                  onChangeText={setValue}
+                  autoFocus={true}
+                  editable={!saving}
+               />
+               :
+               <Text style={[styles.input, !value && { color: colors.input }]}>
+                  {value || placeholder}
+               </Text>
          }
 
          {
-            editValue
-               ?  <View style={{ flexDirection: 'row', gap: 10 }}>
-                     <TouchableOpacity onPress={() => setEditValue(false)}>
-                        <FontAwesome name="check" size={20} color={colors.input} />
-                     </TouchableOpacity>
-                     <TouchableOpacity onPress={() => setEditValue(false)}>
-                        <FontAwesome name="close" size={20} color={colors.input} />
-                     </TouchableOpacity>
-                  </View>
-               :  <TouchableOpacity onPress={() => setEditValue(true)}>
-                     <MaterialIcons name="edit" size={20} color={colors.input} />
+            editing ?
+               <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity onPress={handleSave} disabled={saving}>
+                     {
+                        saving ? <ActivityIndicator size="small" /> : <FontAwesome name="check" size={20} color={colors.input} />
+                     }
                   </TouchableOpacity>
+
+                  <TouchableOpacity onPress={handleCancel} disabled={saving}>
+                        <FontAwesome name="close" size={20} color={colors.input} />
+                  </TouchableOpacity>
+               </View>
+               : <TouchableOpacity onPress={handleEdit}>
+                  <MaterialIcons name="edit" size={20} color={colors.input} />
+               </TouchableOpacity>
          }
       </View>
    );

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/styles";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ProfileInput from "../components/ProfileInput";
 import { useNavigation } from "@react-navigation/native";
 import ImagePickerModal from "../components/ImagePicker";
@@ -10,31 +10,35 @@ import { supabase } from "../supabase/supabaseClient";
 import { useAppData } from "../context/AppDataContext";
 
 const user = {
-   dni: '1234578',
-   name: 'Juan',
-   apaterno: 'Gomez',
-   amaterno: 'Ramirez',
-   email: 'jgomez@gmail.com',
-   phone: '985349754',
-   address: 'Av. Arequipa 3423',
    photo: 'https://images.ctfassets.net/h6goo9gw1hh6/2sNZtFAWOdP1lmQ33VwRN3/e40b6ea6361a1abe28f32e7910f63b66/1-intro-photo-final.jpg?w=1200&h=992&fl=progressive&q=70&fm=jpg'
 }
 
 export default function ProfileScreen() {
    const navigation = useNavigation()
-   const { clearAppData } = useAppData();
+   const { profile, clearAppData } = useAppData();
 
    const [loading, setLoading] = useState(false)
 
    const [showPicker, setShowPicker] = useState(false)
    const [photo, setPhoto] = useState(user.photo)
 
-   const [name, setName] = useState(user.name)
-   const [paternalSurname, setPaternalSurname] = useState(user.apaterno)
-   const [maternalSurname, setMaternalSurname] = useState(user.amaterno)
-   const [email, setEmail] = useState(user.email)
-   const [phone, setPhone] = useState(user.phone)
-   const [address, setAddress] = useState(user.address)
+   const [dni, setDni] = useState("");
+   const [name, setName] = useState("")
+   const [paternalSurname, setPaternalSurname] = useState("")
+   const [maternalSurname, setMaternalSurname] = useState("")
+   const [phone, setPhone] = useState("")
+   const [address, setAddress] = useState("")
+
+   useEffect(() => {
+      if (!profile) return;
+
+      setDni(profile.dni);
+      setName(profile.nombres);
+      setPaternalSurname(profile.apaterno);
+      setMaternalSurname(profile.amaterno);
+      setPhone(profile.celular);
+      setAddress(profile.direccion);
+   }, [profile]);
 
    const handleSelectImage = (uri) => {
       setPhoto(uri)
@@ -58,7 +62,7 @@ export default function ProfileScreen() {
    return (
       <SafeAreaView edges={['top']} style={styles.container}>
          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.document}>DNI° {user.dni}</Text>
+            <Text style={styles.document}>DNI° {dni}</Text>
             <View style={styles.photoContainer}>
                <View style={styles.photo}>
                   {
@@ -79,22 +83,19 @@ export default function ProfileScreen() {
             </View>
 
             <Text style={styles.label}>Nombre completo</Text>
-            <ProfileInput value={name} setValue={setName} placeholder={'Ingresa el nombre completo'} />
+            <ProfileInput value={name} setValue={setName} placeholder={'Ingresa el nombre completo'} columnName={'nombres'} />
 
             <Text style={styles.label}>Apellido paterno</Text>
-            <ProfileInput value={paternalSurname} setValue={setPaternalSurname} placeholder={'Ingresa el apellido paterno'} />
+            <ProfileInput value={paternalSurname} setValue={setPaternalSurname} placeholder={'Ingresa el apellido paterno'} columnName={'apaterno'} />
 
             <Text style={styles.label}>Apellido materno</Text>
-            <ProfileInput value={maternalSurname} setValue={setMaternalSurname} placeholder={'Ingresa el apellido materno'} />
-
-            <Text style={styles.label}>Correo electrónico</Text>
-            <ProfileInput value={email} setValue={setEmail} placeholder={'Ingresa el correo electrónico'} />
+            <ProfileInput value={maternalSurname} setValue={setMaternalSurname} placeholder={'Ingresa el apellido materno'} columnName={'amaterno'} />
 
             <Text style={styles.label}>Celular</Text>
-            <ProfileInput value={phone} setValue={setPhone} placeholder={'Ingresa el número de celular'} />
+            <ProfileInput value={phone} setValue={setPhone} placeholder={'Ingresa el número de celular'} columnName={'celular'} />
 
             <Text style={styles.label}>Dirección</Text>
-            <ProfileInput value={address} setValue={setAddress} placeholder={'Ingresa la dirección del domicilio'} />
+            <ProfileInput value={address} setValue={setAddress} placeholder={'Ingresa la dirección del domicilio'} columnName={'direccion'} />
 
             <TouchableOpacity style={styles.button} onPress={() => console.log('pressed')}>
                <Text style={styles.textButton}>Cambiar contraseña</Text>

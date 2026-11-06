@@ -8,7 +8,6 @@ import { useEffect } from "react";
 import { useAppData } from "../context/AppDataContext";
 
 const user = {
-   name: 'Juan',
    photo: 'https://images.ctfassets.net/h6goo9gw1hh6/2sNZtFAWOdP1lmQ33VwRN3/e40b6ea6361a1abe28f32e7910f63b66/1-intro-photo-final.jpg?w=1200&h=992&fl=progressive&q=70&fm=jpg'
 }
 
@@ -23,13 +22,13 @@ const nextDate = {
 
 export default function HomeScreen() {
    const navigation = useNavigation();
-   const { loading, loadAppData, error } = useAppData();
+   const { profile, loading, loadAppData, error } = useAppData();
 
    useEffect(() => {
       loadAppData().catch(() => {});
    }, [loadAppData]);
 
-   if (loading) {
+   if (loading || !profile) {
       return (
          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <ActivityIndicator size="large" />
@@ -94,7 +93,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
          </View>
          <View style={styles.content}>
-            <Text style={styles.title}>Hola, {user.name}</Text>
+            <Text style={styles.title}>Hola, {profile.nombres}</Text>
             <Text style={styles.subtitle}>¿Qué necesitas gestionar hoy?</Text>
             <View style={styles.grid}>
                {items.map((item) => (
