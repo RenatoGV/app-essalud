@@ -15,6 +15,7 @@ import ProfileScreen from "../screens/ProfileScreen";
 import CentrosSaludScreen from "../screens/CentrosSaludScreen";
 import { supabase } from '../supabase/supabaseClient';
 import { useEffect, useState } from "react";
+import { StatusBar } from "expo-status-bar";
 
 const Stack = createNativeStackNavigator();
 
@@ -71,6 +72,7 @@ export default function AppNavigator() {
 
    return (
       <NavigationContainer>
+         <StatusBar style="dark" backgroundColor="white" />
          <Stack.Navigator
             initialRouteName={session ? "Home" : "Login"}
             screenOptions={{

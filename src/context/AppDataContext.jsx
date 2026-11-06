@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { getSpecialties } from "../services/specialtyService";
 import { getMedicalCenters } from "../services/medicalCenterService";
+import { getProfile, updateProfileField } from "../services/profileService";
 
 const AppDataContext = createContext(null);
 
@@ -8,7 +9,9 @@ export const AppDataProvider = ({ children }) => {
    const [specialties, setSpecialties] = useState([]);
    const [medicalCenters, setMedicalCenters] = useState([]);
 
-   const [loading, setLoading] = useState(false);
+   const [profile, setProfile] = useState(null);
+
+   const [loading, setLoading] = useState(true);
    const [error, setError] = useState(null);
 
    const loadedRef = useRef(false);
@@ -23,13 +26,15 @@ export const AppDataProvider = ({ children }) => {
       setError(null);
 
       try {
-         const [specialtiesData, medicalCentersData] = await Promise.all([
+         const [specialtiesData, medicalCentersData, profileData] = await Promise.all([
             getSpecialties(),
-            getMedicalCenters()
+            getMedicalCenters(),
+            getProfile()
          ]);
          
          setSpecialties(specialtiesData);
          setMedicalCenters(medicalCentersData);
+         setProfile(profileData);
 
          loadedRef.current = true;
       } catch (e) {
@@ -47,15 +52,25 @@ export const AppDataProvider = ({ children }) => {
       setSpecialties(data);
       return data;
    }, []);
+
    const refreshMedicalCenters = useCallback(async () => {
       const data = await getMedicalCenters();
       setMedicalCenters(data);
       return data;
    }, []);
+   
+   const updateProfile = useCallback(async (column, value) => {
+      const updatedData = await updateProfileField(column, value);
+
+      setProfile(prev => ({ ...prev, ...updatedData }));
+
+      return updatedData;
+   }, []);
 
    const clearAppData = useCallback(() => {
       setSpecialties([]);
       setMedicalCenters([]);
+      setProfile(null);
       setError(null);
 
       loadedRef.current = false;
@@ -63,8 +78,8 @@ export const AppDataProvider = ({ children }) => {
    }, []);
 
    const value = useMemo(
-      () => ({ specialties, medicalCenters, loading, error, loadAppData, refreshSpecialties, refreshMedicalCenters, clearAppData }),
-      [specialties, loading, loadAppData]
+      () => ({ specialties, medicalCenters, profile, loading, error, loadAppData, refreshSpecialties, refreshMedicalCenters, updateProfile, clearAppData }),
+      [specialties, medicalCenters, profile, loading, error, loadAppData, refreshSpecialties, refreshMedicalCenters, updateProfile, clearAppData]
    );
 
    return (
