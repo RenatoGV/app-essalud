@@ -13,7 +13,7 @@ function SeparadorCitas() {
   return <View style={styles.separator} />;
 }
 
-export default function MisCitas() {
+export default function MisCitas({ navigation }) {
   const { profile } = useAppData();
   const patientId = profile?.id;
   const [citas, setCitas] = useState(/** @type {import('../services/appointmentService').PatientAppointment[]} */ ([]));
@@ -90,11 +90,7 @@ export default function MisCitas() {
     const cita = citas.find((item) => item.id === id);
     if (!cita) return;
 
-    Alert.alert(
-      'Gestionar cita',
-      `${cita.doctor}\n${formatDate(cita.fecha)} · ${formatTime(cita.hora)}\n\nLa cancelación y reprogramación aún no están disponibles. Tu cita no se ha modificado.`,
-      [{ text: 'Entendido' }],
-    );
+    navigation.navigate('GestionarCita', { citaId: id });
   };
 
   return (
