@@ -1,10 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/styles';
-import { formatDate } from '../helpers/Formatter';
+import { formatDate, formatTime } from '../helpers/Formatter';
+
 
 export default function CitaCard({ cita, onVerDetalles, onGestionarCita }) {
-  const descripcionCita = `${cita.especialidad}, ${cita.fechaTexto}, ${cita.horaTexto}, con ${cita.doctor}`;
+  const fechaTexto = formatDate(cita.fecha);
+  const horaTexto = formatTime(cita.hora);
+  const especialidades = cita.especialidades.join(' · ') || 'Especialidad no disponible';
+  const descripcionCita = `${fechaTexto}, ${horaTexto}, con ${cita.doctor}`;
 
   return (
     <View style={styles.appointmentCard}>
@@ -17,8 +21,8 @@ export default function CitaCard({ cita, onVerDetalles, onGestionarCita }) {
           style={styles.calendarIcon}
         />
         <View style={styles.dateContainer}>
-          <Text style={styles.dateText}>{formatDate(cita.fecha)}</Text>
-          <Text style={styles.timeText}>{cita.hora}</Text>
+          <Text style={styles.dateText}>{fechaTexto}</Text>
+          <Text style={styles.timeText}>{horaTexto}</Text>
         </View>
       </View>
 
@@ -30,8 +34,9 @@ export default function CitaCard({ cita, onVerDetalles, onGestionarCita }) {
           size={32}
         />
         <View style={styles.doctorDetails}>
+          <Text style={styles.specialtyLabel}>Especialidades del médico</Text>
           <View style={styles.specialtyBadge}>
-            <Text style={styles.specialtyText}>{cita.especialidad}</Text>
+            <Text style={styles.specialtyText}>{especialidades}</Text>
           </View>
           <Text style={styles.doctorName}>{cita.doctor}</Text>
           <Text style={styles.healthCenter}>{cita.centroSalud}</Text>
@@ -120,6 +125,11 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     paddingHorizontal: 8,
     paddingVertical: 3,
+  },
+  specialtyLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    marginBottom: 4,
   },
   specialtyText: {
     color: 'white',
