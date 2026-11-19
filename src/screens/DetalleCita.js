@@ -1,64 +1,882 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Linking } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Image,
+    Linking,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/styles';
+import { supabase } from '../supabase/supabaseClient';
+import { useAppData } from '../context/AppDataContext';
+
+const TABLE = 'citas';
+const CACHE_KEY_PREFIX = '@essalud_citas_cache_';
+
+const DAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const MONTHS_ES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+const STATUS_META = {
+    pendiente: { label: 'Pendiente', bg: '#FEF3C7', text: '#92400E' },
+    confirmada: { label: 'Confirmada', bg: '#DCFCE7', text: '#166534' },
+    completada: { label: 'Completada', bg: '#DBEAFE', text: '#1E40AF' },
+    cancelada: { label: 'Cancelada', bg: '#FEE2E2', text: '#991B1B' },
+};
+
+const isNetworkError = (err) => {
+    const msg = String(err?.message || '').toLowerCase();
+    return (
+        err?.name === 'AuthRetryableFetchError' ||
+        msg.includes('network') ||
+        msg.includes('fetch') ||
+        msg.includes('timeout') ||
+        msg.includes('offline')
+    );
+};
+
+const parseLocalDate = (dateValue) => {
+    if (!dateValue) return null;
+    if (dateValue instanceof Date && !Number.isNaN(dateValue.getTime())) {
+        return new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate());
+    }
+    const str = String(dateValue).trim();
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        const parsed = new Date(year, month, day);
+        if (
+            parsed.getFullYear() === year &&
+            parsed.getMonth() === month &&
+            parsed.getDate() === day
+        ) {
+            return parsed;
+        }
+        return null;
+    }
+    const fallback = new Date(str);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+};
+
+const formatDateLong = (dateValue) => {
+    const date = parseLocalDate(dateValue);
+    if (!date) return 'Fecha por confirmar';
+    return `${DAYS_ES[date.getDay()]}, ${date.getDate()} de ${MONTHS_ES[date.getMonth()]} del ${date.getFullYear()}`;
+};
+
+const formatTimeDisplay = (timeValue) => {
+    if (!timeValue) return '--:--';
+    const raw = String(timeValue).trim();
+    if (/a\.?\s*m\.?|p\.?\s*m\.?/i.test(raw)) return raw;
+    const match = raw.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return raw;
+    let hours = Number(match[1]);
+    const minutes = match[2];
+    const period = hours >= 12 ? 'p.m.' : 'a.m.';
+    hours = hours % 12 || 12;
+    return `${String(hours).padStart(2, '0')}:${minutes} ${period}`;
+};
+
+const getShiftLabel = (timeValue) => {
+    if (!timeValue) return 'Turno asignado';
+    const raw = String(timeValue).trim().toLowerCase();
+    const match = raw.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return 'Turno asignado';
+    let hours = Number(match[1]);
+    if (raw.includes('p.m') && hours < 12) hours += 12;
+    if (raw.includes('a.m') && hours === 12) hours = 0;
+    if (hours < 12) return 'Turno mañana';
+    if (hours < 18) return 'Turno tarde';
+    return 'Turno noche';
+};
+
+const getDaysRemainingLabel = (dateValue) => {
+    const target = parseLocalDate(dateValue);
+    if (!target) return 'Sin fecha';
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Hoy';
+    if (diffDays === 1) return 'Mañana';
+    if (diffDays > 1) return `En ${diffDays} días`;
+    return `Hace ${Math.abs(diffDays)} día(s)`;
+};
+
+const maskSensitiveData = (value, visibleDigits = 4) => {
+    if (!value) return 'No registrado';
+    const clean = String(value).trim();
+    if (clean.length <= visibleDigits) return '****';
+    return `${'•'.repeat(Math.min(clean.length - visibleDigits, 6))}${clean.slice(-visibleDigits)}`;
+};
+
+const normalizeTimeInput = (timeValue) => {
+    if (!timeValue) return '09:00';
+    const match = String(timeValue).trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return '09:00';
+    return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
+
+const isValidFutureOrTodayDate = (value) => {
+    const parsed = parseLocalDate(value);
+    if (!parsed) return false;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return parsed.getTime() >= today.getTime();
+};
+
+const isValidTime24h = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value).trim());
 
 export default function AppointmentDetailsScreen() {
+    const navigation = useNavigation();
+    const route = useRoute();
+    const { profile, medicalCenters, specialties } = useAppData();
+
+    const routeCitaId = route.params?.citaId ?? route.params?.id ?? route.params?.cita?.id ?? null;
+
+    const [sessionUser, setSessionUser] = useState(null);
+    const [sessionValid, setSessionValid] = useState(true);
+    const [appointments, setAppointments] = useState([]);
+    const [selectedAppointmentId, setSelectedAppointmentId] = useState(routeCitaId);
+    const [statusFilter, setStatusFilter] = useState('todas');
+    const [usingCache, setUsingCache] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [mutating, setMutating] = useState(false);
+    const [errorMessage, setErrorMessage] = useState(null);
+
+    // Estado del modal de reprogramación (Actualización de registro)
+    const [rescheduleVisible, setRescheduleVisible] = useState(false);
+    const [newDate, setNewDate] = useState('');
+    const [newTime, setNewTime] = useState('');
+
+    // Guardar caché local de forma segura (Módulo 3.4 - AsyncStorage)
+    const saveAppointmentsCache = useCallback(async (userId, list) => {
+        try {
+            await AsyncStorage.setItem(`${CACHE_KEY_PREFIX}${userId}`, JSON.stringify(list));
+        } catch (cacheErr) {
+            console.warn('No se pudo actualizar la caché local:', cacheErr);
+        }
+    }, []);
+
+    // Validación estricta de sesión antes de mutaciones (Módulo 3.2 - Seguridad)
+    const verifyOnlineSession = useCallback(async () => {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData?.session) {
+            setSessionUser(null);
+            setSessionValid(false);
+            return { user: null, offline: false };
+        }
+
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+            if (isNetworkError(userError)) {
+                return { user: null, offline: true };
+            }
+            setSessionUser(null);
+            setSessionValid(false);
+            return { user: null, offline: false };
+        }
+
+        if (!userData?.user) {
+            setSessionUser(null);
+            setSessionValid(false);
+            return { user: null, offline: false };
+        }
+
+        setSessionUser(userData.user);
+        setSessionValid(true);
+        return { user: userData.user, offline: false };
+    }, []);
+
+    // Consulta híbrida: Supabase (API REST) + fallback a AsyncStorage (Módulos 3.2, 3.3, 3.4 y 3.5)
+    const fetchAppointments = useCallback(
+        async (isPullRefresh = false) => {
+            if (isPullRefresh) {
+                setRefreshing(true);
+            } else {
+                setLoading(true);
+            }
+            setErrorMessage(null);
+
+            let localUser = null;
+
+            try {
+                // 1. Verificar sesión local persistida en AsyncStorage por supabaseClient
+                const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+                localUser = sessionData?.session?.user ?? null;
+
+                if (sessionError || !localUser) {
+                    setSessionUser(null);
+                    setSessionValid(false);
+                    setAppointments([]);
+                    return;
+                }
+
+                // 2. Validar sesión contra el servidor
+                const { data: userData, error: userError } = await supabase.auth.getUser();
+                if (userError) {
+                    if (!isNetworkError(userError)) {
+                        setSessionUser(null);
+                        setSessionValid(false);
+                        setAppointments([]);
+                        return;
+                    }
+                    throw userError;
+                }
+
+                const verifiedUser = userData?.user;
+                if (!verifiedUser) {
+                    setSessionUser(null);
+                    setSessionValid(false);
+                    setAppointments([]);
+                    return;
+                }
+
+                setSessionUser(verifiedUser);
+                setSessionValid(true);
+
+                // 3. Consultar citas del paciente autenticado en Supabase
+                const { data, error } = await supabase
+                    .from(TABLE)
+                    .select('*')
+                    .eq('paciente', verifiedUser.id)
+                    .order('fecha', { ascending: true })
+                    .order('hora', { ascending: true });
+
+                if (error) throw error;
+
+                const list = data || [];
+                setAppointments(list);
+                setUsingCache(false);
+
+                await saveAppointmentsCache(verifiedUser.id, list);
+
+                setSelectedAppointmentId((prevId) => {
+                    const desiredId = routeCitaId ?? prevId;
+                    if (desiredId && list.some((item) => String(item.id) === String(desiredId))) {
+                        return desiredId;
+                    }
+                    const nextActive = list.find(
+                        (item) => String(item.estado || '').toLowerCase() !== 'cancelada'
+                    );
+                    return (nextActive || list[0])?.id ?? null;
+                });
+            } catch (err) {
+                console.error('Error al consultar citas:', err);
+
+                // Fallback offline a caché local en AsyncStorage
+                if (localUser) {
+                    try {
+                        const cachedRaw = await AsyncStorage.getItem(`${CACHE_KEY_PREFIX}${localUser.id}`);
+                        if (cachedRaw) {
+                            const cachedList = JSON.parse(cachedRaw);
+                            setSessionUser(localUser);
+                            setSessionValid(true);
+                            setAppointments(cachedList);
+                            setSelectedAppointmentId((prevId) => {
+                                const desiredId = routeCitaId ?? prevId;
+                                if (desiredId && cachedList.some((item) => String(item.id) === String(desiredId))) {
+                                    return desiredId;
+                                }
+                                return cachedList[0]?.id ?? null;
+                            });
+                            setUsingCache(true);
+                            return;
+                        }
+                    } catch (cacheReadErr) {
+                        console.warn('Error leyendo caché local:', cacheReadErr);
+                    }
+                }
+
+                setErrorMessage('No se pudo cargar el detalle de la cita. Verifica tu conexión.');
+            } finally {
+                setLoading(false);
+                setRefreshing(false);
+            }
+        },
+        [routeCitaId, saveAppointmentsCache]
+    );
+
+    useEffect(() => {
+        fetchAppointments(false);
+    }, [fetchAppointments]);
+
+    // Estadísticas y filtros interactivos (Módulo 3.5 - Reportes / Consultas)
+    const stats = useMemo(() => {
+        return appointments.reduce(
+            (acc, item) => {
+                const status = String(item.estado || 'pendiente').toLowerCase();
+                acc.total += 1;
+                if (status === 'pendiente' || status === 'confirmada') acc.activas += 1;
+                if (status === 'cancelada') acc.canceladas += 1;
+                return acc;
+            },
+            { total: 0, activas: 0, canceladas: 0 }
+        );
+    }, [appointments]);
+
+    const filteredAppointments = useMemo(() => {
+        if (statusFilter === 'activas') {
+            return appointments.filter((item) => {
+                const status = String(item.estado || 'pendiente').toLowerCase();
+                return status === 'pendiente' || status === 'confirmada';
+            });
+        }
+        if (statusFilter === 'canceladas') {
+            return appointments.filter(
+                (item) => String(item.estado || '').toLowerCase() === 'cancelada'
+            );
+        }
+        return appointments;
+    }, [appointments, statusFilter]);
+
+    const currentAppointment = useMemo(() => {
+        const sourceList = filteredAppointments.length > 0 ? filteredAppointments : appointments;
+        if (!sourceList.length) return null;
+        return (
+            sourceList.find((item) => String(item.id) === String(selectedAppointmentId)) ||
+            sourceList[0]
+        );
+    }, [appointments, filteredAppointments, selectedAppointmentId]);
+
+    const handleFilterChange = (nextFilter) => {
+        setStatusFilter(nextFilter);
+        const matching = appointments.filter((item) => {
+            const status = String(item.estado || 'pendiente').toLowerCase();
+            if (nextFilter === 'activas') return status === 'pendiente' || status === 'confirmada';
+            if (nextFilter === 'canceladas') return status === 'cancelada';
+            return true;
+        });
+        if (matching.length > 0 && !matching.some((item) => String(item.id) === String(selectedAppointmentId))) {
+            setSelectedAppointmentId(matching[0].id);
+        }
+    };
+
+    // Control de permisos y reglas de negocio (Módulos 3.1, 3.2 y 3.3)
+    const userRole = profile?.rol || sessionUser?.user_metadata?.rol || 'paciente';
+    const isOwner = Boolean(
+        sessionUser &&
+        currentAppointment &&
+        String(currentAppointment.paciente) === String(sessionUser.id)
+    );
+    const normalizedStatus = String(currentAppointment?.estado || 'pendiente').toLowerCase();
+    const statusStyle = STATUS_META[normalizedStatus] || STATUS_META.pendiente;
+    const canModify =
+        sessionValid &&
+        isOwner &&
+        !['cancelada', 'completada'].includes(normalizedStatus);
+
+    // Enriquecimiento de campos con datos de ruta o contexto global
+    const routeCita = route.params?.cita || null;
+
+    const specialtyName = useMemo(() => {
+        if (routeCita?.especialidad) return routeCita.especialidad;
+        if (currentAppointment?.especialidad) return currentAppointment.especialidad;
+        const found = specialties?.find(
+            (s) => String(s.id) === String(currentAppointment?.especialidad_id)
+        );
+        return found?.nombre || found?.name || 'Medicina General / Especialidad asignada';
+    }, [routeCita, currentAppointment, specialties]);
+
+    const medicalCenterObj = useMemo(() => {
+        if (!medicalCenters?.length) return null;
+        return (
+            medicalCenters.find(
+                (c) =>
+                    String(c.id) === String(currentAppointment?.centro_salud_id) ||
+                    c.nombre === routeCita?.centroSalud
+            ) || medicalCenters[0]
+        );
+    }, [medicalCenters, currentAppointment, routeCita]);
+
+    const medicalCenterName =
+        routeCita?.centroSalud ||
+        currentAppointment?.centro_salud ||
+        medicalCenterObj?.nombre ||
+        medicalCenterObj?.name ||
+        'Hospital Nacional Edgardo Rebagliati Martins';
+
+    const doctorDisplayName =
+        routeCita?.doctor ||
+        currentAppointment?.doctor_nombre ||
+        (currentAppointment?.doctor
+            ? `Médico asignado (ID: ${maskSensitiveData(currentAppointment.doctor, 4)})`
+            : 'Médico especialista asignado');
+
+    const doctorCmp = currentAppointment?.cmp || routeCita?.cmp || 'Registrado en EsSalud';
+    const pabellon = currentAppointment?.pabellon || medicalCenterObj?.pabellon || 'B';
+    const piso = currentAppointment?.piso || medicalCenterObj?.piso || '2';
+    const consultorio = currentAppointment?.consultorio || medicalCenterObj?.consultorio || '201';
 
     const openMap = () => {
-        void Linking.openURL('https://maps.google.com/?q=-12.0811,-77.0369');
+        const lat = medicalCenterObj?.latitud ?? medicalCenterObj?.latitude;
+        const lng = medicalCenterObj?.longitud ?? medicalCenterObj?.longitude;
+
+        if (lat && lng) {
+            void Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`);
+            return;
+        }
+
+        const query = encodeURIComponent(medicalCenterObj?.direccion || medicalCenterName);
+        void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
     };
+
+    const openRescheduleModal = () => {
+        if (!canModify || !currentAppointment) return;
+        setNewDate(String(currentAppointment.fecha || '').slice(0, 10));
+        setNewTime(normalizeTimeInput(currentAppointment.hora));
+        setRescheduleVisible(true);
+    };
+
+    // Actualizar cita (UPDATE en Supabase + sincronización AsyncStorage)
+    const handleRescheduleSubmit = async () => {
+        if (!currentAppointment) return;
+
+        if (!isValidFutureOrTodayDate(newDate)) {
+            Alert.alert(
+                'Fecha inválida',
+                'Ingresa una fecha válida de hoy en adelante en formato AAAA-MM-DD (ej. 2026-11-25).'
+            );
+            return;
+        }
+        if (!isValidTime24h(newTime)) {
+            Alert.alert(
+                'Hora inválida',
+                'Ingresa una hora válida en formato 24h HH:MM (ej. 10:30 o 15:00).'
+            );
+            return;
+        }
+
+        setMutating(true);
+        try {
+            const { user, offline } = await verifyOnlineSession();
+            if (offline) {
+                Alert.alert('Sin conexión', 'Necesitas conexión a internet para reprogramar tu cita.');
+                return;
+            }
+            if (!user || String(currentAppointment.paciente) !== String(user.id)) {
+                Alert.alert('Permiso denegado', 'Tu sesión expiró o no tienes permisos para modificar esta cita.');
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from(TABLE)
+                .update({
+                    fecha: newDate.trim(),
+                    hora: newTime.trim(),
+                    estado: 'pendiente',
+                })
+                .eq('id', currentAppointment.id)
+                .eq('paciente', user.id)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            const updatedList = appointments.map((item) =>
+                String(item.id) === String(data.id) ? data : item
+            );
+            setAppointments(updatedList);
+            setUsingCache(false);
+            await saveAppointmentsCache(user.id, updatedList);
+
+            setRescheduleVisible(false);
+            Alert.alert('Cita reprogramada', 'La fecha y hora de tu cita se actualizaron correctamente.');
+        } catch (err) {
+            console.error('Error al reprogramar cita:', err);
+            Alert.alert('Error', 'No se pudo reprogramar la cita. Inténtalo nuevamente.');
+        } finally {
+            setMutating(false);
+        }
+    };
+
+    // Cancelar cita (UPDATE estado a 'cancelada' + sincronización AsyncStorage)
+    const handleCancelAppointment = () => {
+        if (!canModify || !currentAppointment) return;
+
+        Alert.alert(
+            'Cancelar cita',
+            '¿Estás seguro de que deseas cancelar esta cita médica?',
+            [
+                { text: 'No, mantener', style: 'cancel' },
+                {
+                    text: 'Sí, cancelar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setMutating(true);
+                        try {
+                            const { user, offline } = await verifyOnlineSession();
+                            if (offline) {
+                                Alert.alert('Sin conexión', 'Necesitas conexión a internet para cancelar la cita.');
+                                return;
+                            }
+                            if (!user || String(currentAppointment.paciente) !== String(user.id)) {
+                                Alert.alert('Permiso denegado', 'No tienes permisos para cancelar esta cita.');
+                                return;
+                            }
+
+                            const { data, error } = await supabase
+                                .from(TABLE)
+                                .update({ estado: 'cancelada' })
+                                .eq('id', currentAppointment.id)
+                                .eq('paciente', user.id)
+                                .select()
+                                .single();
+
+                            if (error) throw error;
+
+                            const updatedList = appointments.map((item) =>
+                                String(item.id) === String(data.id) ? data : item
+                            );
+                            setAppointments(updatedList);
+                            setUsingCache(false);
+                            await saveAppointmentsCache(user.id, updatedList);
+
+                            Alert.alert('Cita cancelada', 'El estado de la cita cambió a cancelada.');
+                        } catch (err) {
+                            console.error('Error al cancelar cita:', err);
+                            Alert.alert('Error', 'No se pudo cancelar la cita.');
+                        } finally {
+                            setMutating(false);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    // Eliminar registro de cita (DELETE en Supabase + sincronización AsyncStorage)
+    const handleDeleteAppointment = () => {
+        if (!sessionValid || !isOwner || !currentAppointment) return;
+
+        Alert.alert(
+            'Eliminar registro de cita',
+            'Esta acción eliminará permanentemente la cita del sistema. ¿Deseas continuar?',
+            [
+                { text: 'Volver', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setMutating(true);
+                        try {
+                            const { user, offline } = await verifyOnlineSession();
+                            if (offline) {
+                                Alert.alert('Sin conexión', 'Necesitas conexión a internet para eliminar este registro.');
+                                return;
+                            }
+                            if (!user || String(currentAppointment.paciente) !== String(user.id)) {
+                                Alert.alert('Permiso denegado', 'No tienes permisos para eliminar este registro.');
+                                return;
+                            }
+
+                            const { error } = await supabase
+                                .from(TABLE)
+                                .delete()
+                                .eq('id', currentAppointment.id)
+                                .eq('paciente', user.id);
+
+                            if (error) throw error;
+
+                            const remaining = appointments.filter(
+                                (item) => String(item.id) !== String(currentAppointment.id)
+                            );
+                            setAppointments(remaining);
+                            setSelectedAppointmentId(remaining[0]?.id ?? null);
+                            setUsingCache(false);
+                            await saveAppointmentsCache(user.id, remaining);
+
+                            Alert.alert('Registro eliminado', 'La cita fue eliminada correctamente.');
+                            if (remaining.length === 0 && navigation.canGoBack()) {
+                                navigation.goBack();
+                            }
+                        } catch (err) {
+                            console.error('Error al eliminar cita:', err);
+                            Alert.alert('Error', 'No se pudo eliminar el registro de la cita.');
+                        } finally {
+                            setMutating(false);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.centerContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.helperText}>Validando sesión y cargando detalle...</Text>
+            </SafeAreaView>
+        );
+    }
+
+    if (!sessionValid) {
+        return (
+            <SafeAreaView style={styles.centerContainer}>
+                <Ionicons name="shield-outline" size={48} color={colors.primary} />
+                <Text style={styles.emptyTitle}>Sesión no autorizada</Text>
+                <Text style={styles.helperText}>
+                    Inicia sesión nuevamente para consultar o gestionar el detalle de tus citas.
+                </Text>
+                <TouchableOpacity
+                    style={[styles.primaryButton, { marginTop: 16 }]}
+                    onPress={() => (navigation.canGoBack() ? navigation.goBack() : null)}
+                >
+                    <Text style={styles.primaryButtonText}>Volver</Text>
+                </TouchableOpacity>
+            </SafeAreaView>
+        );
+    }
+
+    if (errorMessage) {
+        return (
+            <SafeAreaView style={styles.centerContainer}>
+                <Ionicons name="cloud-offline-outline" size={48} color={colors.primary} />
+                <Text style={styles.emptyTitle}>Error de consulta</Text>
+                <Text style={styles.helperText}>{errorMessage}</Text>
+                <TouchableOpacity
+                    style={[styles.primaryButton, { marginTop: 16 }]}
+                    onPress={() => fetchAppointments(false)}
+                >
+                    <Text style={styles.primaryButtonText}>Reintentar</Text>
+                </TouchableOpacity>
+            </SafeAreaView>
+        );
+    }
+
+    if (!currentAppointment) {
+        return (
+            <SafeAreaView style={styles.centerContainer}>
+                <Ionicons name="calendar-outline" size={48} color={colors.primary} />
+                <Text style={styles.emptyTitle}>No se encontraron citas</Text>
+                <Text style={styles.helperText}>
+                    Aún no tienes citas registradas para mostrar en el detalle.
+                </Text>
+                <TouchableOpacity
+                    style={[styles.primaryButton, { marginTop: 16 }]}
+                    onPress={() => fetchAppointments(false)}
+                >
+                    <Text style={styles.primaryButtonText}>Actualizar</Text>
+                </TouchableOpacity>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={() => fetchAppointments(true)}
+                        colors={[colors.primary]}
+                    />
+                }
+            >
+                {/* Módulo 3.5: Resumen estadístico, filtros interactivos y selector de citas */}
                 <View style={styles.card}>
-                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>ESPECIALIDAD</Text>
-                    <Text style={styles.mainTitle}>Cardiología</Text>
+                    <View style={styles.headerBetween}>
+                        <Text style={[styles.cardSectionTitle, { color: colors.primary, marginBottom: 0 }]}>
+                            RESUMEN DE TUS CITAS
+                        </Text>
+                        <View
+                            style={[
+                                styles.securityPill,
+                                usingCache && { backgroundColor: '#FEF3C7' },
+                            ]}
+                        >
+                            <Ionicons
+                                name={usingCache ? 'cloud-offline-outline' : 'lock-closed'}
+                                size={12}
+                                color={usingCache ? '#92400E' : colors.primary}
+                            />
+                            <Text
+                                style={[
+                                    styles.securityPillText,
+                                    usingCache && { color: '#92400E' },
+                                ]}
+                            >
+                                {usingCache ? 'Modo offline (caché)' : 'Sesión verificada'}
+                            </Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.statsRow}>
+                        <TouchableOpacity
+                            style={[
+                                styles.statBox,
+                                statusFilter === 'todas' && { borderColor: colors.primary, borderWidth: 1.5 },
+                            ]}
+                            onPress={() => handleFilterChange('todas')}
+                        >
+                            <Text style={styles.statValue}>{stats.total}</Text>
+                            <Text style={styles.statLabel}>Total</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.statBox,
+                                statusFilter === 'activas' && { borderColor: colors.primary, borderWidth: 1.5 },
+                            ]}
+                            onPress={() => handleFilterChange('activas')}
+                        >
+                            <Text style={[styles.statValue, { color: colors.primary }]}>{stats.activas}</Text>
+                            <Text style={styles.statLabel}>Activas</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.statBox,
+                                statusFilter === 'canceladas' && { borderColor: '#DC2626', borderWidth: 1.5 },
+                            ]}
+                            onPress={() => handleFilterChange('canceladas')}
+                        >
+                            <Text style={[styles.statValue, { color: '#DC2626' }]}>{stats.canceladas}</Text>
+                            <Text style={styles.statLabel}>Canceladas</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {filteredAppointments.length === 0 ? (
+                        <Text style={styles.filterEmptyText}>
+                            No hay citas en el filtro seleccionado. Toca "Total" para ver todas.
+                        </Text>
+                    ) : filteredAppointments.length > 1 ? (
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.selectorRow}
+                        >
+                            {filteredAppointments.map((item, idx) => {
+                                const active = String(item.id) === String(currentAppointment.id);
+                                return (
+                                    <TouchableOpacity
+                                        key={String(item.id)}
+                                        style={[
+                                            styles.selectorChip,
+                                            active && { backgroundColor: colors.primary, borderColor: colors.primary },
+                                        ]}
+                                        onPress={() => setSelectedAppointmentId(item.id)}
+                                    >
+                                        <Text style={[styles.selectorChipText, active && { color: 'white' }]}>
+                                            Cita #{idx + 1} · {String(item.fecha || '').slice(5, 10)}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    ) : null}
+                </View>
+
+                {/* Especialidad, fecha, hora y estado */}
+                <View style={styles.card}>
+                    <View style={styles.headerBetween}>
+                        <Text style={[styles.cardSectionTitle, { color: colors.primary, marginBottom: 0 }]}>
+                            ESPECIALIDAD
+                        </Text>
+                        <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                            <Text style={[styles.statusBadgeText, { color: statusStyle.text }]}>
+                                {statusStyle.label}
+                            </Text>
+                        </View>
+                    </View>
+
+                    <Text style={styles.mainTitle}>{specialtyName}</Text>
 
                     <View style={[styles.infoBox, { backgroundColor: colors.softBackground, borderColor: colors.primary }]}>
                         <MaterialIcons name="calendar-today" size={24} color={colors.primary} />
                         <View style={styles.infoBoxTextContainer}>
-                            <Text style={styles.boldText}>Miércoles, 24 de Mayo del 2026</Text>
+                            <Text style={styles.boldText}>{formatDateLong(currentAppointment.fecha)}</Text>
                             <View style={styles.rowCenter}>
-                                <Text style={styles.subText}>10:30 a.m.</Text>
+                                <Text style={styles.subText}>{formatTimeDisplay(currentAppointment.hora)}</Text>
                                 <View style={[styles.badge, { backgroundColor: colors.secondary }]}>
-                                    <Text style={styles.badgeText}>Turno mañana</Text>
+                                    <Text style={styles.badgeText}>{getShiftLabel(currentAppointment.hora)}</Text>
                                 </View>
                             </View>
+                            <Text style={styles.daysRemainingText}>
+                                {getDaysRemainingLabel(currentAppointment.fecha)}
+                            </Text>
                         </View>
                     </View>
 
                     <View style={[styles.infoBox, { backgroundColor: colors.softBackground, borderColor: colors.primary, marginTop: 10 }]}>
                         <MaterialCommunityIcons name="bell" size={24} color={colors.primary} />
                         <Text style={[styles.infoText, { marginLeft: 10, flex: 1 }]}>
-                            Recuerda presentarte con tu DNI en mano.
+                            Recuerda presentarte 30 minutos antes con tu DNI en mano.
                         </Text>
                     </View>
                 </View>
 
+                {/* Módulo 3.1 y 3.2: Datos del titular con enmascaramiento y permisos */}
                 <View style={styles.card}>
-                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>MÉDICO ESPECIALIZADO ASIGNADO</Text>
-                    
+                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>
+                        TITULAR DE LA CITA (DATOS PROTEGIDOS)
+                    </Text>
+                    <View style={styles.metaRow}>
+                        <Text style={styles.metaLabel}>Paciente:</Text>
+                        <Text style={styles.metaValue}>
+                            {profile?.nombre || profile?.nombres || sessionUser?.email || 'Usuario autenticado'}
+                        </Text>
+                    </View>
+                    <View style={styles.metaRow}>
+                        <Text style={styles.metaLabel}>DNI:</Text>
+                        <Text style={styles.metaValue}>{maskSensitiveData(profile?.dni, 3)}</Text>
+                    </View>
+                    <View style={styles.metaRow}>
+                        <Text style={styles.metaLabel}>Código de cita:</Text>
+                        <Text style={styles.metaValue}>{maskSensitiveData(currentAppointment.id, 6)}</Text>
+                    </View>
+                    <View style={styles.metaRow}>
+                        <Text style={styles.metaLabel}>Rol / Permiso:</Text>
+                        <Text style={styles.metaValue}>
+                            {String(userRole).toUpperCase()} · {isOwner ? 'Titular autorizado' : 'Solo lectura'}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Médico asignado */}
+                <View style={styles.card}>
+                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>
+                        MÉDICO ESPECIALIZADO ASIGNADO
+                    </Text>
+
                     <View style={styles.rowCenterTop}>
                         <View style={[styles.avatarContainer, { backgroundColor: colors.softBackground }]}>
                             <Ionicons name="person" size={30} color={colors.primary} />
                         </View>
                         <View style={styles.doctorInfo}>
-                            <Text style={styles.boldText}>Dr. Carlos Mendoza</Text>
-                            <Text style={styles.grayText}>Cardiólogo clínico</Text>
+                            <Text style={styles.boldText}>{doctorDisplayName}</Text>
+                            <Text style={styles.grayText}>{specialtyName}</Text>
                             <View style={[styles.darkBadge, { backgroundColor: colors.secondary }]}>
-                                <Text style={styles.badgeText}>CPM: 48291</Text>
+                                <Text style={styles.badgeText}>CMP: {doctorCmp}</Text>
                             </View>
                         </View>
                     </View>
                 </View>
 
+                {/* Establecimiento de salud */}
                 <View style={styles.card}>
-                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>ESTABLECIMIENTO DE SALUD</Text>
-                    <Text style={[styles.boldText, { marginBottom: 10 }]}>
-                        Hospital Nacional Edgardo Rebagliati Martins
+                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>
+                        ESTABLECIMIENTO DE SALUD
                     </Text>
+                    <Text style={[styles.boldText, { marginBottom: 10 }]}>{medicalCenterName}</Text>
 
                     <Image
                         source={require('../../assets/map-image.jpg')}
@@ -68,25 +886,149 @@ export default function AppointmentDetailsScreen() {
                     <View style={styles.locationBoxes}>
                         <View style={[styles.locBox, { backgroundColor: colors.softBackground, borderColor: colors.primary }]}>
                             <Text style={styles.locBoxTitle}>Pabellón</Text>
-                            <Text style={[styles.locBoxValue, { color: colors.primary }]}>B</Text>
+                            <Text style={[styles.locBoxValue, { color: colors.primary }]}>{pabellon}</Text>
                         </View>
                         <View style={[styles.locBox, { backgroundColor: colors.softBackground, borderColor: colors.primary }]}>
                             <Text style={styles.locBoxTitle}>Piso</Text>
-                            <Text style={[styles.locBoxValue, { color: colors.primary }]}>2</Text>
+                            <Text style={[styles.locBoxValue, { color: colors.primary }]}>{piso}</Text>
                         </View>
                         <View style={[styles.locBox, { backgroundColor: colors.softBackground, borderColor: colors.primary }]}>
                             <Text style={styles.locBoxTitle}>Consultorio</Text>
-                            <Text style={[styles.locBoxValue, { color: colors.primary }]}>201</Text>
+                            <Text style={[styles.locBoxValue, { color: colors.primary }]}>{consultorio}</Text>
                         </View>
                     </View>
 
-                    <TouchableOpacity style={[styles.mapButton, { backgroundColor: colors.primary }]} onPress={openMap}>
+                    <TouchableOpacity
+                        style={[styles.mapButton, { backgroundColor: colors.primary }]}
+                        onPress={openMap}
+                    >
                         <Ionicons name="location-sharp" size={20} color="white" />
-                        <Text style={styles.mapButtonText}>Como llegar (Google Maps)</Text>
+                        <Text style={styles.mapButtonText}>Cómo llegar (Google Maps)</Text>
                     </TouchableOpacity>
                 </View>
 
+                {/* Módulo 3.3: Operaciones de negocio (Actualizar, Cancelar y Eliminar) */}
+                <View style={styles.card}>
+                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>
+                        GESTIONAR CITA
+                    </Text>
+
+                    {usingCache && (
+                        <Text style={styles.offlineNotice}>
+                            Estás viendo datos guardados en caché local. Conéctate a internet para modificar o eliminar la cita.
+                        </Text>
+                    )}
+
+                    {!canModify && (
+                        <Text style={styles.disabledNotice}>
+                            Esta cita se encuentra en estado "{statusStyle.label}" y ya no puede reprogramarse ni cancelarse.
+                        </Text>
+                    )}
+
+                    <TouchableOpacity
+                        style={[
+                            styles.actionButton,
+                            { backgroundColor: canModify ? colors.primary : colors.input },
+                        ]}
+                        disabled={!canModify || mutating}
+                        onPress={openRescheduleModal}
+                    >
+                        <MaterialIcons name="edit-calendar" size={20} color="white" />
+                        <Text style={styles.actionButtonText}>Reprogramar cita</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[
+                            styles.actionButton,
+                            styles.cancelButton,
+                            (!canModify || mutating) && styles.disabledOutlineButton,
+                        ]}
+                        disabled={!canModify || mutating}
+                        onPress={handleCancelAppointment}
+                    >
+                        <Ionicons
+                            name="close-circle-outline"
+                            size={20}
+                            color={canModify ? '#DC2626' : colors.input}
+                        />
+                        <Text
+                            style={[
+                                styles.cancelButtonText,
+                                !canModify && { color: colors.input },
+                            ]}
+                        >
+                            Cancelar cita
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.deleteLinkButton, (!isOwner || mutating) && { opacity: 0.4 }]}
+                        disabled={!isOwner || mutating}
+                        onPress={handleDeleteAppointment}
+                    >
+                        <Ionicons name="trash-outline" size={16} color="#991B1B" />
+                        <Text style={styles.deleteLinkText}>Eliminar registro permanentemente</Text>
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
+
+            {/* Modal de reprogramación */}
+            <Modal
+                visible={rescheduleVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setRescheduleVisible(false)}
+            >
+                <View style={styles.modalBackdrop}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Reprogramar cita</Text>
+                        <Text style={styles.modalSubtitle}>
+                            Actualiza la fecha y hora de tu atención médica.
+                        </Text>
+
+                        <Text style={styles.inputLabel}>Nueva fecha (AAAA-MM-DD)</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            value={newDate}
+                            onChangeText={setNewDate}
+                            placeholder="2026-11-25"
+                            placeholderTextColor={colors.input}
+                            autoCapitalize="none"
+                        />
+
+                        <Text style={styles.inputLabel}>Nueva hora (HH:MM formato 24h)</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            value={newTime}
+                            onChangeText={setNewTime}
+                            placeholder="10:30"
+                            placeholderTextColor={colors.input}
+                            autoCapitalize="none"
+                        />
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={[styles.modalBtn, styles.modalCancelBtn]}
+                                disabled={mutating}
+                                onPress={() => setRescheduleVisible(false)}
+                            >
+                                <Text style={styles.modalCancelText}>Cerrar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                                disabled={mutating}
+                                onPress={handleRescheduleSubmit}
+                            >
+                                {mutating ? (
+                                    <ActivityIndicator size="small" color="white" />
+                                ) : (
+                                    <Text style={styles.modalSaveText}>Guardar cambios</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -96,8 +1038,16 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: 'white',
     },
+    centerContainer: {
+        flex: 1,
+        backgroundColor: 'white',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 28,
+    },
     scrollContent: {
         paddingHorizontal: 20,
+        paddingTop: 10,
         paddingBottom: 30,
     },
     card: {
@@ -108,6 +1058,12 @@ const styles = StyleSheet.create({
         padding: 15,
         marginBottom: 15,
     },
+    headerBetween: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
     cardSectionTitle: {
         fontSize: 13,
         fontWeight: '600',
@@ -117,7 +1073,78 @@ const styles = StyleSheet.create({
     mainTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        marginBottom: 15,
+        marginBottom: 12,
+    },
+    statusBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 999,
+    },
+    statusBadgeText: {
+        fontSize: 11,
+        fontWeight: '700',
+    },
+    securityPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.softBackground,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 999,
+    },
+    securityPillText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: colors.primary,
+        marginLeft: 4,
+    },
+    statsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 4,
+    },
+    statBox: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 8,
+        backgroundColor: colors.softBackground,
+        borderRadius: 8,
+        marginHorizontal: 4,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    statValue: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#111827',
+    },
+    statLabel: {
+        fontSize: 11,
+        color: colors.muted || '#6B7280',
+        marginTop: 2,
+    },
+    filterEmptyText: {
+        fontSize: 12,
+        color: colors.muted || '#6B7280',
+        marginTop: 10,
+        textAlign: 'center',
+    },
+    selectorRow: {
+        paddingTop: 12,
+        gap: 8,
+    },
+    selectorChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: colors.input,
+        backgroundColor: 'white',
+    },
+    selectorChipText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#374151',
     },
     infoBox: {
         flexDirection: 'row',
@@ -128,6 +1155,7 @@ const styles = StyleSheet.create({
     },
     infoBoxTextContainer: {
         marginLeft: 12,
+        flex: 1,
     },
     boldText: {
         fontWeight: 'bold',
@@ -139,8 +1167,13 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         marginTop: 2,
     },
+    daysRemainingText: {
+        fontSize: 12,
+        color: colors.muted || '#6B7280',
+        marginTop: 4,
+    },
     infoText: {
-        color: colors.input
+        color: colors.muted || colors.input,
     },
     rowCenter: {
         flexDirection: 'row',
@@ -170,6 +1203,23 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: 'bold',
     },
+    metaRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 4,
+    },
+    metaLabel: {
+        fontSize: 13,
+        color: colors.muted || '#6B7280',
+    },
+    metaValue: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#111827',
+        flexShrink: 1,
+        textAlign: 'right',
+        marginLeft: 12,
+    },
     avatarContainer: {
         width: 50,
         height: 50,
@@ -180,9 +1230,10 @@ const styles = StyleSheet.create({
     doctorInfo: {
         marginLeft: 15,
         justifyContent: 'center',
+        flex: 1,
     },
     grayText: {
-        color: colors.input,
+        color: colors.muted || colors.input,
         fontSize: 13,
         marginTop: 2,
     },
@@ -208,7 +1259,7 @@ const styles = StyleSheet.create({
     },
     locBoxTitle: {
         fontSize: 12,
-        color: colors.input,
+        color: colors.muted || colors.input,
     },
     locBoxValue: {
         fontSize: 18,
@@ -227,5 +1278,141 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 15,
         marginLeft: 8,
-    }
+    },
+    offlineNotice: {
+        fontSize: 12,
+        color: '#92400E',
+        backgroundColor: '#FEF3C7',
+        padding: 10,
+        borderRadius: 8,
+        marginBottom: 10,
+    },
+    disabledNotice: {
+        fontSize: 12,
+        color: colors.muted || '#6B7280',
+        marginBottom: 10,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginBottom: 10,
+    },
+    actionButtonText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 15,
+        marginLeft: 8,
+    },
+    cancelButton: {
+        backgroundColor: 'white',
+        borderWidth: 1,
+        borderColor: '#DC2626',
+    },
+    disabledOutlineButton: {
+        borderColor: colors.input,
+    },
+    cancelButtonText: {
+        color: '#DC2626',
+        fontWeight: 'bold',
+        fontSize: 15,
+        marginLeft: 8,
+    },
+    deleteLinkButton: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 8,
+    },
+    deleteLinkText: {
+        color: '#991B1B',
+        fontSize: 13,
+        fontWeight: '600',
+        marginLeft: 6,
+    },
+    emptyTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginTop: 12,
+        marginBottom: 6,
+        textAlign: 'center',
+    },
+    helperText: {
+        fontSize: 14,
+        color: colors.muted || '#6B7280',
+        textAlign: 'center',
+        marginTop: 8,
+    },
+    primaryButton: {
+        backgroundColor: colors.primary,
+        paddingHorizontal: 22,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    primaryButtonText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.45)',
+        justifyContent: 'center',
+        paddingHorizontal: 20,
+    },
+    modalCard: {
+        backgroundColor: 'white',
+        borderRadius: 12,
+        padding: 20,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    modalSubtitle: {
+        fontSize: 13,
+        color: colors.muted || '#6B7280',
+        marginBottom: 16,
+    },
+    inputLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 6,
+        color: '#374151',
+    },
+    textInput: {
+        borderWidth: 1,
+        borderColor: colors.input,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 14,
+        marginBottom: 14,
+        color: '#111827',
+    },
+    modalActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginTop: 4,
+    },
+    modalBtn: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 8,
+        marginLeft: 10,
+    },
+    modalCancelBtn: {
+        backgroundColor: colors.softBackground,
+    },
+    modalCancelText: {
+        color: '#374151',
+        fontWeight: '600',
+    },
+    modalSaveText: {
+        color: 'white',
+        fontWeight: 'bold',
+    },
 });
