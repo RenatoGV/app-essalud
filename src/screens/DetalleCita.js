@@ -1,17 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Modal,
-    RefreshControl,
+    ActivityIndicator, Image,
+    Linking, RefreshControl,
     ScrollView,
     StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+    Text, TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -124,23 +118,6 @@ const maskSensitiveData = (value, visibleDigits = 4) => {
     return `${'•'.repeat(Math.min(clean.length - visibleDigits, 6))}${clean.slice(-visibleDigits)}`;
 };
 
-const normalizeTimeInput = (timeValue) => {
-    if (!timeValue) return '09:00';
-    const match = String(timeValue).trim().match(/^(\d{1,2}):(\d{2})/);
-    if (!match) return '09:00';
-    return `${match[1].padStart(2, '0')}:${match[2]}`;
-};
-
-const isValidFutureOrTodayDate = (value) => {
-    const parsed = parseLocalDate(value);
-    if (!parsed) return false;
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    return parsed.getTime() >= today.getTime();
-};
-
-const isValidTime24h = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value).trim());
-
 export default function AppointmentDetailsScreen() {
     const navigation = useNavigation();
     const route = useRoute();
@@ -156,13 +133,7 @@ export default function AppointmentDetailsScreen() {
     const [usingCache, setUsingCache] = useState(false);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [mutating, setMutating] = useState(false);
     const [errorMessage, setErrorMessage] = useState(null);
-
-    // Estado del modal de reprogramación (Actualización de registro)
-    const [rescheduleVisible, setRescheduleVisible] = useState(false);
-    const [newDate, setNewDate] = useState('');
-    const [newTime, setNewTime] = useState('');
 
     // Guardar caché local de forma segura (Módulo 3.4 - AsyncStorage)
     const saveAppointmentsCache = useCallback(async (userId, list) => {
@@ -171,36 +142,6 @@ export default function AppointmentDetailsScreen() {
         } catch (cacheErr) {
             console.warn('No se pudo actualizar la caché local:', cacheErr);
         }
-    }, []);
-
-    // Validación estricta de sesión antes de mutaciones (Módulo 3.2 - Seguridad)
-    const verifyOnlineSession = useCallback(async () => {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !sessionData?.session) {
-            setSessionUser(null);
-            setSessionValid(false);
-            return { user: null, offline: false };
-        }
-
-        const { data: userData, error: userError } = await supabase.auth.getUser();
-        if (userError) {
-            if (isNetworkError(userError)) {
-                return { user: null, offline: true };
-            }
-            setSessionUser(null);
-            setSessionValid(false);
-            return { user: null, offline: false };
-        }
-
-        if (!userData?.user) {
-            setSessionUser(null);
-            setSessionValid(false);
-            return { user: null, offline: false };
-        }
-
-        setSessionUser(userData.user);
-        setSessionValid(true);
-        return { user: userData.user, offline: false };
     }, []);
 
     // Consulta híbrida: Supabase (API REST) + fallback a AsyncStorage (Módulos 3.2, 3.3, 3.4 y 3.5)
@@ -376,10 +317,6 @@ export default function AppointmentDetailsScreen() {
     );
     const normalizedStatus = String(currentAppointment?.estado || 'pendiente').toLowerCase();
     const statusStyle = STATUS_META[normalizedStatus] || STATUS_META.pendiente;
-    const canModify =
-        sessionValid &&
-        isOwner &&
-        !['cancelada', 'completada'].includes(normalizedStatus);
 
     // Enriquecimiento de campos con datos de ruta o contexto global
     const routeCita = route.params?.cita || null;
@@ -434,187 +371,6 @@ export default function AppointmentDetailsScreen() {
 
         const query = encodeURIComponent(medicalCenterObj?.direccion || medicalCenterName);
         void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
-    };
-
-    const openRescheduleModal = () => {
-        if (!canModify || !currentAppointment) return;
-        setNewDate(String(currentAppointment.fecha || '').slice(0, 10));
-        setNewTime(normalizeTimeInput(currentAppointment.hora));
-        setRescheduleVisible(true);
-    };
-
-    // Actualizar cita (UPDATE en Supabase + sincronización AsyncStorage)
-    const handleRescheduleSubmit = async () => {
-        if (!currentAppointment) return;
-
-        if (!isValidFutureOrTodayDate(newDate)) {
-            Alert.alert(
-                'Fecha inválida',
-                'Ingresa una fecha válida de hoy en adelante en formato AAAA-MM-DD (ej. 2026-11-25).'
-            );
-            return;
-        }
-        if (!isValidTime24h(newTime)) {
-            Alert.alert(
-                'Hora inválida',
-                'Ingresa una hora válida en formato 24h HH:MM (ej. 10:30 o 15:00).'
-            );
-            return;
-        }
-
-        setMutating(true);
-        try {
-            const { user, offline } = await verifyOnlineSession();
-            if (offline) {
-                Alert.alert('Sin conexión', 'Necesitas conexión a internet para reprogramar tu cita.');
-                return;
-            }
-            if (!user || String(currentAppointment.paciente) !== String(user.id)) {
-                Alert.alert('Permiso denegado', 'Tu sesión expiró o no tienes permisos para modificar esta cita.');
-                return;
-            }
-
-            const { data, error } = await supabase
-                .from(TABLE)
-                .update({
-                    fecha: newDate.trim(),
-                    hora: newTime.trim(),
-                    estado: 'pendiente',
-                })
-                .eq('id', currentAppointment.id)
-                .eq('paciente', user.id)
-                .select()
-                .single();
-
-            if (error) throw error;
-
-            const updatedList = appointments.map((item) =>
-                String(item.id) === String(data.id) ? data : item
-            );
-            setAppointments(updatedList);
-            setUsingCache(false);
-            await saveAppointmentsCache(user.id, updatedList);
-
-            setRescheduleVisible(false);
-            Alert.alert('Cita reprogramada', 'La fecha y hora de tu cita se actualizaron correctamente.');
-        } catch (err) {
-            console.error('Error al reprogramar cita:', err);
-            Alert.alert('Error', 'No se pudo reprogramar la cita. Inténtalo nuevamente.');
-        } finally {
-            setMutating(false);
-        }
-    };
-
-    // Cancelar cita (UPDATE estado a 'cancelada' + sincronización AsyncStorage)
-    const handleCancelAppointment = () => {
-        if (!canModify || !currentAppointment) return;
-
-        Alert.alert(
-            'Cancelar cita',
-            '¿Estás seguro de que deseas cancelar esta cita médica?',
-            [
-                { text: 'No, mantener', style: 'cancel' },
-                {
-                    text: 'Sí, cancelar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        setMutating(true);
-                        try {
-                            const { user, offline } = await verifyOnlineSession();
-                            if (offline) {
-                                Alert.alert('Sin conexión', 'Necesitas conexión a internet para cancelar la cita.');
-                                return;
-                            }
-                            if (!user || String(currentAppointment.paciente) !== String(user.id)) {
-                                Alert.alert('Permiso denegado', 'No tienes permisos para cancelar esta cita.');
-                                return;
-                            }
-
-                            const { data, error } = await supabase
-                                .from(TABLE)
-                                .update({ estado: 'cancelada' })
-                                .eq('id', currentAppointment.id)
-                                .eq('paciente', user.id)
-                                .select()
-                                .single();
-
-                            if (error) throw error;
-
-                            const updatedList = appointments.map((item) =>
-                                String(item.id) === String(data.id) ? data : item
-                            );
-                            setAppointments(updatedList);
-                            setUsingCache(false);
-                            await saveAppointmentsCache(user.id, updatedList);
-
-                            Alert.alert('Cita cancelada', 'El estado de la cita cambió a cancelada.');
-                        } catch (err) {
-                            console.error('Error al cancelar cita:', err);
-                            Alert.alert('Error', 'No se pudo cancelar la cita.');
-                        } finally {
-                            setMutating(false);
-                        }
-                    },
-                },
-            ]
-        );
-    };
-
-    // Eliminar registro de cita (DELETE en Supabase + sincronización AsyncStorage)
-    const handleDeleteAppointment = () => {
-        if (!sessionValid || !isOwner || !currentAppointment) return;
-
-        Alert.alert(
-            'Eliminar registro de cita',
-            'Esta acción eliminará permanentemente la cita del sistema. ¿Deseas continuar?',
-            [
-                { text: 'Volver', style: 'cancel' },
-                {
-                    text: 'Eliminar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        setMutating(true);
-                        try {
-                            const { user, offline } = await verifyOnlineSession();
-                            if (offline) {
-                                Alert.alert('Sin conexión', 'Necesitas conexión a internet para eliminar este registro.');
-                                return;
-                            }
-                            if (!user || String(currentAppointment.paciente) !== String(user.id)) {
-                                Alert.alert('Permiso denegado', 'No tienes permisos para eliminar este registro.');
-                                return;
-                            }
-
-                            const { error } = await supabase
-                                .from(TABLE)
-                                .delete()
-                                .eq('id', currentAppointment.id)
-                                .eq('paciente', user.id);
-
-                            if (error) throw error;
-
-                            const remaining = appointments.filter(
-                                (item) => String(item.id) !== String(currentAppointment.id)
-                            );
-                            setAppointments(remaining);
-                            setSelectedAppointmentId(remaining[0]?.id ?? null);
-                            setUsingCache(false);
-                            await saveAppointmentsCache(user.id, remaining);
-
-                            Alert.alert('Registro eliminado', 'La cita fue eliminada correctamente.');
-                            if (remaining.length === 0 && navigation.canGoBack()) {
-                                navigation.goBack();
-                            }
-                        } catch (err) {
-                            console.error('Error al eliminar cita:', err);
-                            Alert.alert('Error', 'No se pudo eliminar el registro de la cita.');
-                        } finally {
-                            setMutating(false);
-                        }
-                    },
-                },
-            ]
-        );
     };
 
     if (loading) {
@@ -906,129 +662,7 @@ export default function AppointmentDetailsScreen() {
                         <Text style={styles.mapButtonText}>Cómo llegar (Google Maps)</Text>
                     </TouchableOpacity>
                 </View>
-
-                {/* Módulo 3.3: Operaciones de negocio (Actualizar, Cancelar y Eliminar) */}
-                <View style={styles.card}>
-                    <Text style={[styles.cardSectionTitle, { color: colors.primary }]}>
-                        GESTIONAR CITA
-                    </Text>
-
-                    {usingCache && (
-                        <Text style={styles.offlineNotice}>
-                            Estás viendo datos guardados en caché local. Conéctate a internet para modificar o eliminar la cita.
-                        </Text>
-                    )}
-
-                    {!canModify && (
-                        <Text style={styles.disabledNotice}>
-                            Esta cita se encuentra en estado "{statusStyle.label}" y ya no puede reprogramarse ni cancelarse.
-                        </Text>
-                    )}
-
-                    <TouchableOpacity
-                        style={[
-                            styles.actionButton,
-                            { backgroundColor: canModify ? colors.primary : colors.input },
-                        ]}
-                        disabled={!canModify || mutating}
-                        onPress={openRescheduleModal}
-                    >
-                        <MaterialIcons name="edit-calendar" size={20} color="white" />
-                        <Text style={styles.actionButtonText}>Reprogramar cita</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[
-                            styles.actionButton,
-                            styles.cancelButton,
-                            (!canModify || mutating) && styles.disabledOutlineButton,
-                        ]}
-                        disabled={!canModify || mutating}
-                        onPress={handleCancelAppointment}
-                    >
-                        <Ionicons
-                            name="close-circle-outline"
-                            size={20}
-                            color={canModify ? '#DC2626' : colors.input}
-                        />
-                        <Text
-                            style={[
-                                styles.cancelButtonText,
-                                !canModify && { color: colors.input },
-                            ]}
-                        >
-                            Cancelar cita
-                        </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.deleteLinkButton, (!isOwner || mutating) && { opacity: 0.4 }]}
-                        disabled={!isOwner || mutating}
-                        onPress={handleDeleteAppointment}
-                    >
-                        <Ionicons name="trash-outline" size={16} color="#991B1B" />
-                        <Text style={styles.deleteLinkText}>Eliminar registro permanentemente</Text>
-                    </TouchableOpacity>
-                </View>
             </ScrollView>
-
-            {/* Modal de reprogramación */}
-            <Modal
-                visible={rescheduleVisible}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setRescheduleVisible(false)}
-            >
-                <View style={styles.modalBackdrop}>
-                    <View style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>Reprogramar cita</Text>
-                        <Text style={styles.modalSubtitle}>
-                            Actualiza la fecha y hora de tu atención médica.
-                        </Text>
-
-                        <Text style={styles.inputLabel}>Nueva fecha (AAAA-MM-DD)</Text>
-                        <TextInput
-                            style={styles.textInput}
-                            value={newDate}
-                            onChangeText={setNewDate}
-                            placeholder="2026-11-25"
-                            placeholderTextColor={colors.input}
-                            autoCapitalize="none"
-                        />
-
-                        <Text style={styles.inputLabel}>Nueva hora (HH:MM formato 24h)</Text>
-                        <TextInput
-                            style={styles.textInput}
-                            value={newTime}
-                            onChangeText={setNewTime}
-                            placeholder="10:30"
-                            placeholderTextColor={colors.input}
-                            autoCapitalize="none"
-                        />
-
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity
-                                style={[styles.modalBtn, styles.modalCancelBtn]}
-                                disabled={mutating}
-                                onPress={() => setRescheduleVisible(false)}
-                            >
-                                <Text style={styles.modalCancelText}>Cerrar</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
-                                disabled={mutating}
-                                onPress={handleRescheduleSubmit}
-                            >
-                                {mutating ? (
-                                    <ActivityIndicator size="small" color="white" />
-                                ) : (
-                                    <Text style={styles.modalSaveText}>Guardar cambios</Text>
-                                )}
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
         </SafeAreaView>
     );
 }
@@ -1279,59 +913,6 @@ const styles = StyleSheet.create({
         fontSize: 15,
         marginLeft: 8,
     },
-    offlineNotice: {
-        fontSize: 12,
-        color: '#92400E',
-        backgroundColor: '#FEF3C7',
-        padding: 10,
-        borderRadius: 8,
-        marginBottom: 10,
-    },
-    disabledNotice: {
-        fontSize: 12,
-        color: colors.muted || '#6B7280',
-        marginBottom: 10,
-    },
-    actionButton: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderRadius: 8,
-        marginBottom: 10,
-    },
-    actionButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 15,
-        marginLeft: 8,
-    },
-    cancelButton: {
-        backgroundColor: 'white',
-        borderWidth: 1,
-        borderColor: '#DC2626',
-    },
-    disabledOutlineButton: {
-        borderColor: colors.input,
-    },
-    cancelButtonText: {
-        color: '#DC2626',
-        fontWeight: 'bold',
-        fontSize: 15,
-        marginLeft: 8,
-    },
-    deleteLinkButton: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingVertical: 8,
-    },
-    deleteLinkText: {
-        color: '#991B1B',
-        fontSize: 13,
-        fontWeight: '600',
-        marginLeft: 6,
-    },
     emptyTitle: {
         fontSize: 18,
         fontWeight: 'bold',
@@ -1355,64 +936,5 @@ const styles = StyleSheet.create({
         color: 'white',
         fontWeight: 'bold',
         fontSize: 14,
-    },
-    modalBackdrop: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.45)',
-        justifyContent: 'center',
-        paddingHorizontal: 20,
-    },
-    modalCard: {
-        backgroundColor: 'white',
-        borderRadius: 12,
-        padding: 20,
-    },
-    modalTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 4,
-    },
-    modalSubtitle: {
-        fontSize: 13,
-        color: colors.muted || '#6B7280',
-        marginBottom: 16,
-    },
-    inputLabel: {
-        fontSize: 12,
-        fontWeight: '600',
-        marginBottom: 6,
-        color: '#374151',
-    },
-    textInput: {
-        borderWidth: 1,
-        borderColor: colors.input,
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 14,
-        marginBottom: 14,
-        color: '#111827',
-    },
-    modalActions: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        marginTop: 4,
-    },
-    modalBtn: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
-        marginLeft: 10,
-    },
-    modalCancelBtn: {
-        backgroundColor: colors.softBackground,
-    },
-    modalCancelText: {
-        color: '#374151',
-        fontWeight: '600',
-    },
-    modalSaveText: {
-        color: 'white',
-        fontWeight: 'bold',
     },
 });
