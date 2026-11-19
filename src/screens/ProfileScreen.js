@@ -1,5 +1,5 @@
-import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Ionicons, Octicons } from "@expo/vector-icons";
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/styles";
 import { useEffect, useState } from "react";
@@ -29,6 +29,15 @@ export default function ProfileScreen() {
    const [phone, setPhone] = useState("")
    const [address, setAddress] = useState("")
 
+   const [showPasswordModal, setShowPasswordModal] = useState(false)
+   const [currentPassword, setCurrentPassword] = useState("")
+   const [newPassword, setNewPassword] = useState("")
+   const [confirmPassword, setConfirmPassword] = useState("")
+   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+   const [showNewPassword, setShowNewPassword] = useState(false)
+   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+   const [passwordLoading, setPasswordLoading] = useState(false)
+
    useEffect(() => {
       if (!profile) return;
 
@@ -39,6 +48,79 @@ export default function ProfileScreen() {
       setPhone(profile.celular);
       setAddress(profile.direccion);
    }, [profile]);
+
+   const resetPasswordModal = () => {
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+      setShowCurrentPassword(false)
+      setShowNewPassword(false)
+      setShowConfirmPassword(false)
+      setPasswordLoading(false)
+      setShowPasswordModal(false)
+   }
+
+   const handleChangePassword = async () => {
+      if (!currentPassword || !newPassword || !confirmPassword) {
+         Alert.alert("Campos incompletos", "Por favor completa todos los campos.")
+         return
+      }
+
+      if (newPassword.length < 6) {
+         Alert.alert("Contraseña débil", "La nueva contraseña debe tener al menos 6 caracteres.")
+         return
+      }
+
+      if (currentPassword === newPassword) {
+         Alert.alert("Contraseña idéntica", "La nueva contraseña debe ser diferente a la contraseña actual.")
+         return
+      }
+
+      if (newPassword !== confirmPassword) {
+         Alert.alert("Error de coincidencia", "Las nuevas contraseñas no coinciden.")
+         return
+      }
+
+      setPasswordLoading(true)
+
+      try {
+         const { data: { user: authUser }, error: userError } = await supabase.auth.getUser()
+
+         if (userError || !authUser?.email) {
+            setPasswordLoading(false)
+            Alert.alert("Error", "No se pudo verificar la sesión del usuario.")
+            return
+         }
+
+         const { error: verifyError } = await supabase.auth.signInWithPassword({
+            email: authUser.email,
+            password: currentPassword,
+         })
+
+         if (verifyError) {
+            setPasswordLoading(false)
+            Alert.alert("Contraseña incorrecta", "La contraseña actual no es válida. Por favor verifícala.")
+            return
+         }
+
+         const { error: updateError } = await supabase.auth.updateUser({
+            password: newPassword,
+         })
+
+         setPasswordLoading(false)
+
+         if (updateError) {
+            Alert.alert("Error al actualizar", updateError.message)
+            return
+         }
+
+         Alert.alert("¡Éxito!", "Tu contraseña ha sido actualizada correctamente.")
+         resetPasswordModal()
+      } catch (err) {
+         setPasswordLoading(false)
+         Alert.alert("Error", "Ocurrió un error inesperado al actualizar la contraseña.")
+      }
+   }
 
    const handleSelectImage = (uri) => {
       setPhoto(uri)
@@ -97,7 +179,7 @@ export default function ProfileScreen() {
             <Text style={styles.label}>Dirección</Text>
             <ProfileInput value={address} setValue={setAddress} placeholder={'Ingresa la dirección del domicilio'} columnName={'direccion'} />
 
-            <TouchableOpacity style={styles.button} onPress={() => console.log('pressed')}>
+            <TouchableOpacity style={styles.button} onPress={() => setShowPasswordModal(true)}>
                <Text style={styles.textButton}>Cambiar contraseña</Text>
             </TouchableOpacity>
 
@@ -108,6 +190,108 @@ export default function ProfileScreen() {
                }
             </TouchableOpacity>
          </ScrollView>
+
+         <Modal
+            visible={showPasswordModal}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={resetPasswordModal}
+         >
+            <View style={styles.modalOverlay}>
+               <View style={styles.modalCard}>
+                  <View style={styles.modalHeader}>
+                     <Text style={styles.modalTitle}>Cambiar Contraseña</Text>
+                     <TouchableOpacity onPress={resetPasswordModal} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <Ionicons name="close" size={24} color={colors.input} />
+                     </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.modalSubtitle}>
+                     Ingresa tu contraseña actual para verificar tu identidad y luego escribe la nueva contraseña.
+                  </Text>
+
+                  <Text style={styles.fieldLabel}>Contraseña actual</Text>
+                  <View style={styles.modalInputContainer}>
+                     <Octicons name="lock" size={18} color={colors.input} />
+                     <TextInput
+                        style={styles.modalInput}
+                        placeholder="Contraseña actual"
+                        placeholderTextColor={colors.input}
+                        secureTextEntry={!showCurrentPassword}
+                        value={currentPassword}
+                        onChangeText={setCurrentPassword}
+                     />
+                     <Pressable onPress={() => setShowCurrentPassword(!showCurrentPassword)}>
+                        <Octicons
+                           name={showCurrentPassword ? "eye-closed" : "eye"}
+                           size={18}
+                           color={colors.input}
+                        />
+                     </Pressable>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Nueva contraseña</Text>
+                  <View style={styles.modalInputContainer}>
+                     <Octicons name="key" size={18} color={colors.input} />
+                     <TextInput
+                        style={styles.modalInput}
+                        placeholder="Mínimo 6 caracteres"
+                        placeholderTextColor={colors.input}
+                        secureTextEntry={!showNewPassword}
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                     />
+                     <Pressable onPress={() => setShowNewPassword(!showNewPassword)}>
+                        <Octicons
+                           name={showNewPassword ? "eye-closed" : "eye"}
+                           size={18}
+                           color={colors.input}
+                        />
+                     </Pressable>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Confirmar nueva contraseña</Text>
+                  <View style={styles.modalInputContainer}>
+                     <Octicons name="check-circle" size={18} color={colors.input} />
+                     <TextInput
+                        style={styles.modalInput}
+                        placeholder="Repite la nueva contraseña"
+                        placeholderTextColor={colors.input}
+                        secureTextEntry={!showConfirmPassword}
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                     />
+                     <Pressable onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                        <Octicons
+                           name={showConfirmPassword ? "eye-closed" : "eye"}
+                           size={18}
+                           color={colors.input}
+                        />
+                     </Pressable>
+                  </View>
+
+                  <TouchableOpacity
+                     style={styles.actionButton}
+                     onPress={handleChangePassword}
+                     disabled={passwordLoading}
+                  >
+                     {passwordLoading ? (
+                        <ActivityIndicator color="white" />
+                     ) : (
+                        <Text style={styles.actionButtonText}>Actualizar contraseña</Text>
+                     )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                     style={styles.cancelButton}
+                     onPress={resetPasswordModal}
+                     disabled={passwordLoading}
+                  >
+                     <Text style={styles.cancelButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+               </View>
+            </View>
+         </Modal>
       </SafeAreaView>
    )
 }
@@ -160,5 +344,85 @@ const styles = StyleSheet.create({
    textButton: {
       color: 'white',
       fontWeight: 'bold'
-   }
+   },
+   modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.45)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+   },
+   modalCard: {
+      width: '100%',
+      backgroundColor: 'white',
+      borderRadius: 16,
+      padding: 22,
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+   },
+   modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+   },
+   modalTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.secondary,
+   },
+   modalSubtitle: {
+      fontSize: 13,
+      color: '#4B5563',
+      marginBottom: 18,
+      lineHeight: 18,
+   },
+   fieldLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: '#374151',
+      marginBottom: 6,
+   },
+   modalInputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1.5,
+      borderColor: colors.input,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 14,
+      backgroundColor: '#FAFAFA',
+   },
+   modalInput: {
+      flex: 1,
+      marginLeft: 10,
+      fontSize: 14,
+      color: '#1F2937',
+   },
+   actionButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: 8,
+   },
+   actionButtonText: {
+      color: 'white',
+      fontWeight: 'bold',
+      fontSize: 15,
+   },
+   cancelButton: {
+      alignItems: 'center',
+      marginTop: 12,
+      paddingVertical: 6,
+   },
+   cancelButtonText: {
+      color: colors.muted,
+      fontSize: 14,
+      fontWeight: '600',
+   },
 })
