@@ -78,12 +78,7 @@ export default function MisCitas({ navigation }) {
     const cita = citas.find((item) => item.id === id);
     if (!cita) return;
 
-    // Resumen real hasta que DetalleCita consuma el identificador de la cita seleccionada.
-    Alert.alert(
-      'Resumen de la cita',
-      `${formatDate(cita.fecha)} · ${formatTime(cita.hora)}\n${cita.doctor}\nEspecialidades del médico: ${cita.especialidades.join(', ') || 'No disponibles'}\n${cita.centroSalud}`,
-      [{ text: 'Entendido' }],
-    );
+    navigation.navigate('DetalleCita', { citaId: id });
   };
 
   const handleGestionarCita = (id) => {
