@@ -14,19 +14,13 @@ const formatDate = (date) => {
    return `${year}-${month}-${day}`;
 };
 
-// Comprueba si un horario ya pasó cuando la fecha es hoy.
-const isPastSlot = (date, time) => {
-   const today = formatDate(new Date());
-
-   if (date !== today) return false;
-
-   const now = new Date();
-   const [hours, minutes] = time.split(":").map(Number);
-
-   const slotDate = new Date();
-   slotDate.setHours(hours, minutes, 0, 0);
-
-   return slotDate <= now;
+// Las horas de atención pertenecen a Perú, aunque el teléfono esté en otra zona.
+export const isFutureSlot = (date, time) => {
+   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+       !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?$/.test(time)) return false;
+   const calendarDate = new Date(`${date}T00:00:00Z`);
+   if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== date) return false;
+   return new Date(`${date}T${time.length === 5 ? `${time}:00` : time}-05:00`).getTime() > Date.now();
 };
 
 // Genera los horarios respetando la duración de cada cita.
@@ -94,7 +88,7 @@ export const getAvailableSlots = async (doctorId, date, turno) => {
          const hour = Number(time.split(":")[0]);
          const belongsToShift = turno === "manana" ? hour < 14 : hour >= 14;
 
-         return belongsToShift && !isPastSlot(date, time);
+         return belongsToShift && isFutureSlot(date, time);
       });
 
    return [...new Set(slots)]
@@ -144,7 +138,7 @@ export const getAvailableDates = async (doctorId, startDate, endDate) => {
       const occupied = occupiedByDate.get(date) ?? new Set();
 
       const hasAvailableSlot = daySchedules.some((schedule) =>
-         generateSlots(schedule).some((slot) => !occupied.has(slot) && !isPastSlot(date, slot))
+         generateSlots(schedule).some((slot) => !occupied.has(slot) && isFutureSlot(date, slot))
       );
 
       if (hasAvailableSlot) {

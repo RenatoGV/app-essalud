@@ -1,62 +1,96 @@
+import { useCallback, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CitaCard from '../components/CitaCard';
 import { colors } from '../constants/styles';
-
-const citas = [
-  {
-    id: 'cita-001',
-    diasDesdeHoy: 1,
-    fecha: new Date('2026-10-4'),
-    hora: '10:30 a.m.',
-    doctor: 'Dr. Carlos Mendoza',
-    especialidad: 'Cardiología',
-    centroSalud: 'Hospital Nacional Edgardo Rebagliati Martins',
-  },
-  {
-    id: 'cita-002',
-    diasDesdeHoy: 3,
-    fecha: new Date('2026-10-7'),
-    hora: '08:00 a.m.',
-    doctor: 'Dra. Patricia Salazar',
-    especialidad: 'Medicina interna',
-    centroSalud: 'Policlínico Pablo Bermúdez',
-  },
-  {
-    id: 'cita-003',
-    diasDesdeHoy: 7,
-    fecha: new Date('2026-10-3'),
-    hora: '15:15 p.m.',
-    doctor: 'Dr. Javier Rojas',
-    especialidad: 'Traumatología',
-    centroSalud: 'Hospital Guillermo Almenara Irigoyen',
-  },
-]
+import { useAppData } from '../context/AppDataContext';
+import { formatDate, formatTime, getDateInPeru } from '../helpers/Formatter';
+import { getPatientAppointments } from '../services/appointmentService';
 
 function SeparadorCitas() {
   return <View style={styles.separator} />;
 }
 
-export default function MisCitas() {
-  const navigation = useNavigation()
-  
-  const citasManana = 3
+export default function MisCitas({ navigation }) {
+  const { profile } = useAppData();
+  const patientId = profile?.id;
+  const [citas, setCitas] = useState(/** @type {import('../services/appointmentService').PatientAppointment[]} */ ([]));
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [fechaHoy, setFechaHoy] = useState(getDateInPeru);
+  const activeRequest = useRef(/** @type {AbortController|null} */ (null));
+  const isFocused = useRef(false);
 
+  const loadAppointments = useCallback(async (refresh = false) => {
+    if (!isFocused.current) return;
+
+    // Solo la consulta más reciente puede actualizar la pantalla.
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    setLoading(!refresh);
+    setRefreshing(refresh);
+    setError('');
+
+    try {
+      if (!patientId) throw new Error('No hay un paciente autenticado.');
+      const data = await getPatientAppointments({ signal: controller.signal });
+      if (!controller.signal.aborted) setCitas(data);
+    } catch {
+      if (!controller.signal.aborted) {
+        setCitas([]);
+        setError(patientId
+          ? 'No se pudieron cargar tus citas. Comprueba tu conexión e inténtalo nuevamente.'
+          : 'No se pudo identificar al paciente. Vuelve a iniciar sesión.');
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [patientId]);
+
+  useFocusEffect(useCallback(() => {
+    isFocused.current = true;
+    setCitas([]);
+    const today = getDateInPeru();
+    if (fechaHoy !== today) setFechaHoy(today);
+    void loadAppointments();
+
+    // Revisa el día mientras esta pantalla está activa; consulta de nuevo solo si cambia.
+    const interval = setInterval(() => setFechaHoy(getDateInPeru()), 60_000);
+    return () => {
+      isFocused.current = false;
+      activeRequest.current?.abort();
+      clearInterval(interval);
+    };
+  }, [loadAppointments, fechaHoy]));
+
+  const fechaManana = getDateInPeru(new Date(), 1);
+  const citasManana = citas.filter((cita) => cita.fecha === fechaManana).length;
+
+  /** @param {string|number} id */
   const handleVerDetalles = (id) => {
-    navigation.navigate('DetalleCita')
+    const cita = citas.find((item) => item.id === id);
+    if (!cita) return;
+
+    // Resumen real hasta que DetalleCita consuma el identificador de la cita seleccionada.
+    Alert.alert(
+      'Resumen de la cita',
+      `${formatDate(cita.fecha)} · ${formatTime(cita.hora)}\n${cita.doctor}\nEspecialidades del médico: ${cita.especialidades.join(', ') || 'No disponibles'}\n${cita.centroSalud}`,
+      [{ text: 'Entendido' }],
+    );
   };
 
   const handleGestionarCita = (id) => {
     const cita = citas.find((item) => item.id === id);
     if (!cita) return;
 
-    Alert.alert(
-      'Gestionar cita · Demostración',
-      `${cita.especialidad} con ${cita.doctor}\n${cita.fechaTexto} · ${cita.horaTexto}\n\nLa cancelación y reprogramación estarán disponibles en un próximo avance. Tu cita no se ha modificado.`,
-      [{ text: 'Entendido' }],
-    );
+    navigation.navigate('GestionarCita', { citaId: id });
   };
 
   return (
@@ -64,7 +98,9 @@ export default function MisCitas() {
       <FlatList
         contentContainerStyle={styles.listContent}
         data={citas}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
+        refreshing={refreshing}
+        onRefresh={() => { void loadAppointments(true); }}
         renderItem={({ item }) => (
           <CitaCard
             cita={item}
@@ -88,7 +124,25 @@ export default function MisCitas() {
             </View>
           </View>
         ) : null}
-        ListEmptyComponent={(
+        ListEmptyComponent={loading || refreshing ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.emptyTitle}>Cargando tus citas...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="alert-circle-outline" size={42} color={colors.primary} />
+            <Text style={styles.emptyTitle}>No pudimos consultar tus citas</Text>
+            <Text style={styles.emptyText} accessibilityRole="alert">{error}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => { void loadAppointments(); }}
+              style={styles.retryButton}
+            >
+              <Text style={styles.retryText}>Reintentar</Text>
+            </Pressable>
+          </View>
+        ) : (
           <View style={styles.emptyContainer}>
             <Ionicons name="calendar-outline" size={42} color={colors.primary} />
             <Text style={styles.emptyTitle}>No tienes citas programadas</Text>
@@ -155,5 +209,19 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 14,
     textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 24,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    marginTop: 20,
+  },
+  retryText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

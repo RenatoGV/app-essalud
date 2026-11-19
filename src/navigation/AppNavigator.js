@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import HomeScreen from "../screens/HomeScreen";
 import MisCitas from "../screens/MisCitas";
+import GestionarCita from "../screens/GestionarCita";
 import ReservarCitaScreen from '../screens/ReservarCitaScreen';
 import RegisterScreen from "../screens/RegisterScreen";
 import AppointmentDetailsScreen from "../screens/DetalleCita";
@@ -129,6 +130,11 @@ export default function AppNavigator() {
                options={{
                   title: 'Mis citas'
                }}
+            />
+            <Stack.Screen
+               name="GestionarCita"
+               component={GestionarCita}
+               options={{ title: 'Gestionar cita' }}
             />
             <Stack.Screen
                name = "HistorialMedico"
